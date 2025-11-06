@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <title>주소 → 지도 & 그룹 묶기</title>
 
-  <!-- ✅ 네이버 지도 JS (신규 방식: ncpKeyId 사용) -->
+  <!-- 네이버 지도 JS (신규 방식: ncpKeyId 사용) -->
   <script
     type="text/javascript"
     src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=ms2yp98bvf&submodules=geocoder"
   ></script>
 
-  <!-- ✅ XLSX 라이브러리 (엑셀 읽기/쓰기) -->
+  <!-- XLSX 라이브러리 (엑셀 읽기/쓰기) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <style>
@@ -271,6 +271,9 @@
           <label>최대 가구 수
             <input id="maxGroupSize" type="number" value="12" style="width:80px">
           </label>
+          <label style="margin-left:8px;">그룹 수
+            <input id="groupCount" type="number" placeholder="자동" style="width:80px">
+          </label>
         </div>
         <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px;">
           <button class="primary" onclick="geocodeAll()">1단계: 주소 지오코딩</button>
@@ -469,6 +472,7 @@
 
       const cache = JSON.parse(localStorage.getItem('geocodeCache') || '{}');
       const maxGroupSize = parseInt(document.getElementById('maxGroupSize').value, 10) || 12;
+      const groupCountInput = document.getElementById('groupCount');
 
       const coords = [];
       const noCoords = [];
@@ -487,10 +491,24 @@
         return;
       }
 
-      const neededGroups = Math.max(1, Math.ceil(coords.length / maxGroupSize));
+      // 추천 그룹 수 (최대 가구 수 기준)
+      const recommendedGroups = Math.max(1, Math.ceil(coords.length / maxGroupSize));
+
+      // 실제 사용할 그룹 수: 입력값 우선, 없으면 추천값
+      let k = parseInt(groupCountInput.value, 10);
+      if (!k || k <= 0) {
+        k = coords.length ? recommendedGroups : 0;
+        if (coords.length && !groupCountInput.value) {
+          groupCountInput.value = recommendedGroups;
+        }
+      }
+      if (coords.length && k > coords.length) k = coords.length; // 너무 많으면 좌표 수까지
 
       groups = [];
-      for (let i = 0; i < neededGroups; i++) {
+
+      // 좌표 있는 애들용 숫자 그룹
+      const numericGroupCount = coords.length ? k : 0;
+      for (let i = 0; i < numericGroupCount; i++) {
         groups.push({
           id: i + 1,
           color: groupColors[i % groupColors.length],
@@ -498,12 +516,14 @@
         });
       }
 
-      // 단순 균등 배분
-      coords.forEach((c, idx) => {
-        const g = groups[idx % neededGroups];
-        g.items.push(c);
-        c.group = g.id;
-      });
+      if (numericGroupCount > 0) {
+        // 단순 균등 배분 (라운드 로빈)
+        coords.forEach((c, idx) => {
+          const g = groups[idx % numericGroupCount];
+          g.items.push(c);
+          c.group = g.id;
+        });
+      }
 
       // 좌표 없는 애들은 미지정 그룹
       if (noCoords.length) {
@@ -521,7 +541,8 @@
 
       const summary =
         `그룹 수: ${groups.length}개 (좌표 있음: ${coords.length}가구 / 좌표 없음: ${noCoords.length}가구)\n` +
-        `추천 그룹 수(최대 ${maxGroupSize}가구 기준): ${neededGroups}개`;
+        `추천 그룹 수(최대 ${maxGroupSize}가구 기준): ${recommendedGroups}개` +
+        (groupCountInput.value ? ` / 입력한 그룹 수: ${groupCountInput.value}개` : " (입력값 없음 → 추천값 사용)");
       document.getElementById('status').textContent = summary;
     }
 
