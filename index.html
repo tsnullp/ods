@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <title>주소 → 지도 & 그룹 묶기</title>
-  <!-- 네이버 지도 JS (신규 방식: ncpKeyId 사용) -->
+
+  <!-- ✅ 네이버 지도 JS (신규 방식: ncpKeyId 사용) -->
   <script
     type="text/javascript"
     src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=ms2yp98bvf&submodules=geocoder"
   ></script>
-  <!-- XLSX -->
+
+  <!-- ✅ XLSX 라이브러리 (엑셀 읽기/쓰기) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <style>
@@ -23,9 +25,9 @@
       background: #f5f7fa;
     }
 
-    /* 좌측 사이드바 */
+    /* 사이드바 (좌측) */
     #sidebar {
-      width: 420px;
+      width: 430px;
       background: #fff;
       box-shadow: 3px 0 10px rgba(0,0,0,0.05);
       display: flex;
@@ -41,6 +43,7 @@
       overflow: hidden;
     }
 
+    /* 지도 영역 (우측) */
     #map {
       flex: 1;
       position: relative;
@@ -114,11 +117,14 @@
       border-radius: 10px;
       border: 1px solid #ddd;
       background: #fafafa;
-      transition: all 0.2s;
+      transition: all 0.15s;
     }
     .group-box:hover {
       background: #eef6ff;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
     }
+
     .group-header {
       padding: 8px 10px;
       font-weight: 600;
@@ -144,7 +150,7 @@
     }
 
     .group-contents {
-      padding: 4px 12px 8px;
+      padding: 4px 10px 8px;
       display: none;
     }
     .group-box.open .group-contents {
@@ -152,10 +158,13 @@
     }
 
     .address-item {
-      padding: 5px 0;
+      padding: 5px 4px;
       border-bottom: 1px dashed #ddd;
       font-size: 12px;
       cursor: grab;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
     }
     .address-item:last-child {
       border-bottom: none;
@@ -166,10 +175,23 @@
     .address-item:active {
       cursor: grabbing;
     }
-    .address-item small {
+    .address-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .address-main small {
       color: #777;
       display: block;
       margin-top: 2px;
+    }
+    .address-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .address-controls select {
+      font-size: 11px;
+      padding: 2px 4px;
     }
 
     .info-window {
@@ -188,7 +210,7 @@
       white-space: pre-line;
     }
 
-    /* 지도 위 리스트 열기 플로팅 버튼 */
+    /* 지도 위 "리스트 열기" 플로팅 버튼 */
     #openSidebarBtn {
       position: absolute;
       left: 12px;
@@ -205,9 +227,7 @@
     }
 
     @media (max-width: 768px) {
-      body {
-        flex-direction: column;
-      }
+      body { flex-direction: column; }
       #sidebar {
         width: 100%;
         height: 55%;
@@ -223,13 +243,14 @@
   </style>
 </head>
 <body>
-  <!-- 사이드바 -->
+  <!-- 좌측 사이드바 -->
   <div id="sidebar">
     <header>
       <span>주소 → 지도 & 그룹 묶기</span>
       <button onclick="toggleSidebar('hide')">지도만 보기</button>
     </header>
 
+    <!-- 설정 영역 (접기/펼치기) -->
     <details open id="settings-panel">
       <summary>설정 펼치기 / 접기</summary>
       <div style="margin-top:6px;font-size:12px;">
@@ -260,6 +281,7 @@
       </div>
     </details>
 
+    <!-- 필터 + 상태 -->
     <div style="padding:6px 15px 0;font-size:12px;">
       보기:
       <button onclick="setFilter('all')">모두</button>
@@ -268,6 +290,7 @@
       <div id="status"></div>
     </div>
 
+    <!-- 그룹 / 주소 리스트 -->
     <div id="group-list"></div>
   </div>
 
@@ -277,15 +300,21 @@
   </div>
 
   <script>
+    // ===== 전역 상태 =====
     let map;
     let markers = [];
-    let groups = [];       // [{id, color, items:[] , isUngrouped?}]
+    let groups = [];       // [{id, color, items:[], isUngrouped?}]
     let addressData = [];  // [{original, item, group?}]
     let dragged = null;
     let filterMode = 'all';
 
     const groupColors = ['#007bff','#ff6600','#28a745','#dc3545','#6f42c1','#20c997','#fd7e14'];
 
+    // 자동 스크롤용
+    let autoScrollTimer = null;
+    let lastDragY = 0;
+
+    // ===== 지도 초기화 =====
     function initMap() {
       map = new naver.maps.Map('map', {
         center: new naver.maps.LatLng(37.158135, 127.103159),
@@ -293,13 +322,13 @@
       });
     }
 
-    // JS 로드 이후 init
     if (window.naver && naver.maps) {
       naver.maps.onJSContentLoaded = initMap;
     } else {
       window.onload = initMap;
     }
 
+    // ===== 사이드바 토글 =====
     function toggleSidebar(mode) {
       const sidebar = document.getElementById('sidebar');
       const openBtn = document.getElementById('openSidebarBtn');
@@ -323,7 +352,7 @@
       renderGroups();
     }
 
-    // 엑셀 읽기
+    // ===== 엑셀 읽기 =====
     document.getElementById('excelFile').addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
@@ -338,7 +367,6 @@
         const addrCol = parseInt(document.getElementById('addressCol').value, 10) - 1;
         const itemCol = parseInt(document.getElementById('itemCol').value, 10) - 1;
 
-        // 주소 있는 행만
         addressData = rows
           .filter(r => r[addrCol])
           .map(r => ({
@@ -361,7 +389,7 @@
       reader.readAsArrayBuffer(file);
     });
 
-    // 지오코딩 (중복 제거 + 캐시 사용/신규/실패 집계)
+    // ===== 지오코딩 (중복 제거 + 캐시 사용) =====
     async function geocodeAll() {
       if (!addressData.length) {
         alert("먼저 엑셀 파일을 불러오세요.");
@@ -393,7 +421,6 @@
           `(${i + 1}/${uniqueAddresses.length}) "${addr}" 변환 중...\n` +
           `캐시 사용: ${cachedCount}개 / 새 변환: ${newCount}개 / 실패: ${failCount}개`;
 
-        // 지오코딩 호출
         // eslint-disable-next-line no-await-in-loop
         await new Promise(resolve => {
           geocoder.geocode({ query: addr }, (status, response) => {
@@ -417,7 +444,6 @@
           });
         });
 
-        // 살짝 텀
         // eslint-disable-next-line no-await-in-loop
         await new Promise(r => setTimeout(r, 120));
       }
@@ -434,7 +460,7 @@
       alert(`지오코딩 완료\n새로 변환: ${newCount}개\n실패: ${failCount}개`);
     }
 
-    // 그룹 묶기 (좌표 없는 주소는 "미지정" 그룹으로)
+    // ===== 그룹 묶기 (좌표 없는 건 미지정 그룹) =====
     function groupAddresses() {
       if (!addressData.length) {
         alert("엑셀 데이터를 먼저 불러오세요.");
@@ -472,7 +498,7 @@
         });
       }
 
-      // 단순 라운드로빈 할당 (최소한 균등)
+      // 단순 균등 배분
       coords.forEach((c, idx) => {
         const g = groups[idx % neededGroups];
         g.items.push(c);
@@ -489,6 +515,7 @@
         });
       }
 
+      syncGroupsToAddressData();
       renderGroups();
       renderMarkers();
 
@@ -498,7 +525,20 @@
       document.getElementById('status').textContent = summary;
     }
 
-    // 마커 그리기
+    // ===== addressData.group 동기화 =====
+    function syncGroupsToAddressData() {
+      const mapping = {};
+      groups.forEach(g => {
+        g.items.forEach(item => {
+          mapping[item.original] = g.id;
+        });
+      });
+      addressData.forEach(row => {
+        row.group = mapping[row.original] || null;
+      });
+    }
+
+    // ===== 마커 관련 =====
     function clearMarkers() {
       markers.forEach(m => m.setMap(null));
       markers = [];
@@ -556,22 +596,79 @@
         });
       });
 
-      if (!bounds.isEmpty && typeof bounds.isEmpty === 'function') {
+      if (bounds.isEmpty && typeof bounds.isEmpty === 'function') {
         if (!bounds.isEmpty()) {
           map.fitBounds(bounds);
         }
-      } else {
-        // 일부 환경에서 isEmpty 함수가 없을 수 있으니 그냥 pass
       }
     }
 
-    // 그룹 리스트 렌더링
+    function focusMarker(a) {
+      if (!a.lat || !a.lng || !map) return;
+      const pos = new naver.maps.LatLng(a.lat, a.lng);
+      map.setCenter(pos);
+      map.setZoom(14);
+    }
+
+    function fitToGroup(g) {
+      if (!g.items.length || !map) return;
+      const bounds = new naver.maps.LatLngBounds();
+      g.items.forEach(a => {
+        if (a.lat && a.lng) {
+          bounds.extend(new naver.maps.LatLng(a.lat, a.lng));
+        }
+      });
+      if (bounds.isEmpty && bounds.isEmpty()) return;
+      map.fitBounds(bounds);
+    }
+
+    // ===== 그룹 변경 공통 함수 (드롭다운 & 드래그 모두 여기로) =====
+    function changeItemGroup(item, targetGroupId) {
+      const targetIdStr = String(targetGroupId);
+
+      const oldGroup = groups.find(g => g.items.includes(item));
+      if (!oldGroup) return;
+      if (String(oldGroup.id) === targetIdStr) return;
+
+      oldGroup.items = oldGroup.items.filter(x => x !== item);
+
+      const newGroup = groups.find(g => String(g.id) === targetIdStr);
+      if (!newGroup) return;
+
+      newGroup.items.push(item);
+      item.group = newGroup.id;
+
+      syncGroupsToAddressData();
+      renderGroups();
+      renderMarkers();
+    }
+
+    // ===== 그룹 리스트 렌더링 =====
+    function getAllGroupIdsSorted() {
+      const numeric = groups
+        .filter(g => typeof g.id === 'number')
+        .map(g => g.id)
+        .sort((a, b) => a - b);
+      const others = groups
+        .filter(g => typeof g.id !== 'number')
+        .map(g => g.id);
+      return [...numeric, ...others];
+    }
+
     function renderGroups() {
       const list = document.getElementById('group-list');
+
+      // 현재 열려있는 그룹 기억
+      const prevOpen = new Set();
+      list.querySelectorAll('.group-box.open').forEach(box => {
+        if (box.dataset.groupId) prevOpen.add(box.dataset.groupId);
+      });
+
       list.innerHTML = '';
 
       const frag = document.createDocumentFragment();
       const maxGroupSize = parseInt(document.getElementById('maxGroupSize').value, 10) || 12;
+      const allGroupIds = getAllGroupIdsSorted();
 
       groups.forEach(g => {
         const isUngrouped = !!g.isUngrouped;
@@ -582,6 +679,7 @@
         const box = document.createElement('div');
         box.className = 'group-box';
         box.style.borderColor = g.color;
+        box.dataset.groupId = String(g.id);
 
         const header = document.createElement('div');
         header.className = 'group-header';
@@ -607,13 +705,39 @@
           const div = document.createElement('div');
           div.className = 'address-item';
           div.draggable = true;
-          div.innerHTML = `
+
+          const main = document.createElement('div');
+          main.className = 'address-main';
+          main.innerHTML = `
             • ${a.original}
             ${a.item ? `<small>${a.item}</small>` : ''}
           `;
 
+          const controls = document.createElement('div');
+          controls.className = 'address-controls';
+
+          const sel = document.createElement('select');
+          allGroupIds.forEach(id => {
+            const opt = document.createElement('option');
+            opt.value = String(id);
+            opt.textContent = (id === '미지정') ? '미지정' : `그룹 ${id}`;
+            if (String(id) === String(a.group || g.id)) {
+              opt.selected = true;
+            }
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', (e) => {
+            const target = e.target.value;
+            changeItemGroup(a, target);
+          });
+
+          controls.appendChild(sel);
+
+          div.appendChild(main);
+          div.appendChild(controls);
+
           div.ondragstart = () => { dragged = a; };
-          div.ondragend = () => { dragged = null; };
+          div.ondragend = () => { dragged = null; stopAutoScroll(); };
 
           div.ondblclick = () => {
             if (a.lat && a.lng) focusMarker(a);
@@ -624,25 +748,20 @@
 
         box.appendChild(content);
 
-        // 이 그룹으로 드랍 시 그룹 변경
+        // 드랍 시 이 그룹으로 이동
         box.ondragover = e => { e.preventDefault(); };
         box.ondrop = e => {
           e.preventDefault();
           if (!dragged) return;
-
-          // 기존 그룹에서 제거
-          const oldGroup = groups.find(x => x.items.includes(dragged));
-          if (oldGroup) {
-            oldGroup.items = oldGroup.items.filter(x => x !== dragged);
-          }
-
-          // 새 그룹에 추가
-          g.items.push(dragged);
-          dragged.group = g.id;
-
-          renderGroups();
-          renderMarkers();
+          changeItemGroup(dragged, g.id);
+          dragged = null;
+          stopAutoScroll();
         };
+
+        // 이전에 열려 있던 건 다시 열어주기
+        if (prevOpen.has(String(g.id))) {
+          box.classList.add('open');
+        }
 
         frag.appendChild(box);
       });
@@ -651,29 +770,13 @@
 
       const totalGroups = groups.length;
       const totalAddr = addressData.length;
-      document.getElementById('status').textContent +=
-        `\n현재 그룹 수: ${totalGroups}개 / 엑셀 행 수: ${totalAddr}행`;
+      if (!document.getElementById('status').textContent.includes('현재 그룹 수')) {
+        document.getElementById('status').textContent +=
+          `\n현재 그룹 수: ${totalGroups}개 / 엑셀 행 수: ${totalAddr}행`;
+      }
     }
 
-    function focusMarker(a) {
-      if (!a.lat || !a.lng || !map) return;
-      const pos = new naver.maps.LatLng(a.lat, a.lng);
-      map.setCenter(pos);
-      map.setZoom(14);
-    }
-
-    function fitToGroup(g) {
-      if (!g.items.length || !map) return;
-      const bounds = new naver.maps.LatLngBounds();
-      g.items.forEach(a => {
-        if (a.lat && a.lng) {
-          bounds.extend(new naver.maps.LatLng(a.lat, a.lng));
-        }
-      });
-      if (bounds.isEmpty && !bounds.isEmpty()) return;
-      map.fitBounds(bounds);
-    }
-
+    // ===== 목록 초기화 =====
     function clearList() {
       if (!addressData.length && !groups.length) {
         alert("지울 목록이 없습니다.");
@@ -688,6 +791,7 @@
       }
     }
 
+    // ===== 엑셀 내보내기 =====
     function exportExcel() {
       if (!addressData.length) {
         alert("엑셀 데이터가 없습니다.");
@@ -707,6 +811,40 @@
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "결과");
       XLSX.writeFile(wb, "그룹결과.xlsx");
+    }
+
+    // ===== 드래그 자동 스크롤 =====
+    const groupListEl = document.getElementById('group-list');
+
+    groupListEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      lastDragY = e.clientY;
+      startAutoScroll();
+    });
+    groupListEl.addEventListener('dragleave', () => {
+      stopAutoScroll();
+    });
+
+    function startAutoScroll() {
+      if (autoScrollTimer) return;
+      autoScrollTimer = setInterval(() => {
+        const rect = groupListEl.getBoundingClientRect();
+        const topZone = rect.top + 40;
+        const bottomZone = rect.bottom - 40;
+
+        if (lastDragY < topZone) {
+          groupListEl.scrollTop -= 12;
+        } else if (lastDragY > bottomZone) {
+          groupListEl.scrollTop += 12;
+        }
+      }, 40);
+    }
+
+    function stopAutoScroll() {
+      if (autoScrollTimer) {
+        clearInterval(autoScrollTimer);
+        autoScrollTimer = null;
+      }
     }
   </script>
 </body>
