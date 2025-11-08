@@ -2,22 +2,21 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <title>주소 → NAVER 지도 & 엑셀 그룹 묶기</title>
+    <title>주소 → NAVER 지도 & 엑셀 그룹 묶기 (최종)</title>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
     />
 
-    <!-- NAVER 지도 JS (신규 ncpKeyId 방식) -->
     <script
       type="text/javascript"
       src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=ms2yp98bvf&submodules=geocoder"
     ></script>
 
-    <!-- SheetJS (엑셀 파싱) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
     <style>
+      /* (스타일 부분은 이전과 동일합니다.) */
       * {
         box-sizing: border-box;
       }
@@ -274,7 +273,7 @@
         top: 0;
         z-index: 2;
         background: rgba(248, 250, 252, 0.97);
-        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
+        box-shadow: 0 0px 4px rgba(15, 23, 42, 0.06);
       }
       .groupHeaderMain {
         display: flex;
@@ -296,6 +295,7 @@
       .groupToggleIcon {
         font-size: 11px;
         transition: transform 0.15s ease;
+        cursor: pointer;
       }
       .groupCard.collapsed .groupToggleIcon {
         transform: rotate(-90deg);
@@ -440,11 +440,9 @@
                 <b>출발점 가까운 그룹부터</b> 초과될 수 있어요.
               </li>
               <li>
-                <b>추천 그룹 수</b>는
-                <span style="font-weight: 600"
-                  >전체 가구 수 / 최대 가구 수</span
-                >
-                로 계산한, 이론상 초과 없는 최소 그룹 수예요.
+                <b>그룹 수</b>는 이제
+                <span style="font-weight: 600">자동 추천값</span>으로
+                설정됩니다. 수동으로 변경할 수 있습니다.
               </li>
               <li>엑셀 주소/품목/CBM 열은 번호를 바꾸면 즉시 반영돼요.</li>
               <li>
@@ -486,7 +484,7 @@
                 <input type="number" id="maxGroupSize" value="12" min="1" />
               </label>
               <label class="formLabel">
-                그룹 수
+                그룹 수 (자동 추천)
                 <input type="number" id="numGroupsInput" value="" min="1" />
               </label>
             </div>
@@ -525,42 +523,61 @@
     </div>
 
     <script>
+      // -----------------------------------------------------------
+      // 전역 변수 및 초기 설정
+      // -----------------------------------------------------------
+
+      // NAVER 지도 상의 출발점 (안성시 일대로 임시 설정)
       const START_POINT = new naver.maps.LatLng(37.158135, 127.103159);
       const LOCAL_CACHE_KEY = "addrCache_v1";
       const LOCAL_STATE_KEY = "groupState_v1";
+      const LOCAL_COLLAPSE_KEY = "groupCollapseState_v1";
 
       let map;
       let infoWindow;
-      let markers = []; // {marker, idx}
-      let points = []; // {original, used, lat, lng, failed, items[], cbmTotal, groupIndex}
+      let markers = [];
+      let points = [];
       let geocodeCache = {};
       let currentViewFilter = "all";
       let draggingIdx = null;
 
-      // 그룹 접기 상태 저장용
-      const collapsedGroups = {};
+      let collapsedGroups = {};
 
+      // 🎨 [업데이트] 그룹 색상 팔레트 확장 (총 30개)
       const groupColors = [
-        "#2563eb",
-        "#16a34a",
-        "#f97316",
-        "#ec4899",
-        "#8b5cf6",
-        "#06b6d4",
-        "#facc15",
-        "#0ea5e9",
-        "#10b981",
-        "#fb7185",
-        "#a855f7",
-        "#14b8a6",
-        "#f59e0b",
-        "#3b82f6",
-        "#ef4444",
-        "#22c55e",
-        "#e11d48",
-        "#6366f1",
-        "#84cc16",
-        "#059669",
+        "#E74C3C", // Red
+        "#3498DB", // Blue
+        "#2ECC71", // Green
+        "#F39C12", // Orange
+        "#9B59B6", // Purple
+        "#1ABC9C", // Turquoise
+        "#F1C40F", // Yellow
+        "#E67E22", // Dark Orange
+        "#34495E", // Dark Blue/Grey
+        "#95A5A6", // Grey-Blue
+
+        "#C0392B", // Dark Red
+        "#2980B9", // Dark Blue
+        "#27AE60", // Dark Green
+        "#D35400", // Rust
+        "#8E44AD", // Dark Purple
+        "#16A085", // Dark Turquoise
+        "#FAD7A0", // Light Gold
+        "#4A235A", // Deep Purple
+
+        "#5DADE2", // Light Blue
+        "#58D68D", // Mint Green
+        "#F5B041", // Gold
+        "#E93B81", // Pink-Red
+        "#76448A", // Medium Purple
+        "#48C9B0", // Light Teal
+        "#DC7633", // Brown-Orange
+        "#BA4A00", // Deep Brown
+
+        "#BB8FCE", // Light Purple
+        "#AED6F1", // Very Light Blue
+        "#F8C471", // Light Orange
+        "#207040", // Forest Green
       ];
 
       const statusEl = document.getElementById("statusLine");
@@ -585,6 +602,7 @@
         });
         naver.maps.Event.addListener(map, "click", () => infoWindow.close());
 
+        // 출발점 마커
         new naver.maps.Marker({
           position: START_POINT,
           map,
@@ -599,6 +617,7 @@
 
         loadCache();
         loadState();
+        loadCollapseState();
         updateRecommendedGroups();
         updateFilterChips();
         updateGroupSummaryAndList();
@@ -609,6 +628,10 @@
       } else {
         window.addEventListener("load", initMap);
       }
+
+      // -----------------------------------------------------------
+      // LocalStorage 캐시/상태 관리
+      // -----------------------------------------------------------
 
       function loadCache() {
         try {
@@ -635,7 +658,10 @@
             failed: !!p.failed,
             items: Array.isArray(p.items) ? p.items : [],
             cbmTotal: typeof p.cbmTotal === "number" ? p.cbmTotal : 0,
-            groupIndex: typeof p.groupIndex === "number" ? p.groupIndex : null,
+            groupIndex:
+              typeof p.groupIndex === "number" && p.groupIndex >= 0
+                ? p.groupIndex
+                : null,
           }));
           renderMarkers();
         } catch {}
@@ -649,11 +675,57 @@
         } catch {}
       }
 
-      function normalizeAddress(str) {
-        if (!str) return "";
-        return str.trim().replace(/\s+/g, " ");
+      function loadCollapseState() {
+        try {
+          const raw = localStorage.getItem(LOCAL_COLLAPSE_KEY);
+          if (raw) {
+            collapsedGroups = JSON.parse(raw);
+          } else {
+            collapsedGroups = {
+              g_unassigned: true,
+              g_failed: true,
+            };
+          }
+        } catch {
+          collapsedGroups = {
+            g_unassigned: true,
+            g_failed: true,
+          };
+        }
+      }
+      function saveCollapseState() {
+        try {
+          localStorage.setItem(
+            LOCAL_COLLAPSE_KEY,
+            JSON.stringify(collapsedGroups)
+          );
+        } catch {}
       }
 
+      // -----------------------------------------------------------
+      // 그룹핑 핵심 로직 (강제 그룹 및 K-means)
+      // -----------------------------------------------------------
+
+      /**
+       * 주소에서 'OO시'와 같은 도시명을 추출합니다.
+       */
+      function getCityFromAddress(addr) {
+        if (!addr) return "UNKNOWN";
+        const tokens = addr.split(" ").filter(Boolean);
+        if (tokens.length > 0 && tokens[0].endsWith("시")) {
+          return tokens[0];
+        }
+        if (tokens.length > 0 && tokens[0].endsWith("도")) return tokens[0];
+        if (tokens.length > 0 && tokens[0].endsWith("특별시")) return tokens[0];
+        if (tokens.length > 0 && tokens[0].endsWith("광역시")) return tokens[0];
+        if (tokens.length > 0 && tokens[0].endsWith("자차시")) return tokens[0];
+        if (tokens.length > 0 && tokens[0].endsWith("자차도")) return tokens[0];
+        return "UNKNOWN";
+      }
+
+      /**
+       * 지리적 거리를 계산합니다. (km)
+       */
       function distanceKmPoint(p1, p2) {
         const R = 6371.0088;
         const lat1 = (p1.lat * Math.PI) / 180;
@@ -665,6 +737,335 @@
           Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
+      }
+
+      /**
+       * 순수 지리적 거리 기반 K-means 1회 실행
+       */
+      function runKMeansPureDistance(
+        initialPoints,
+        k,
+        iter = 20,
+        initialCentroids = null
+      ) {
+        const n = initialPoints.length;
+        if (k > n) k = n;
+
+        // 초기 중심점 설정 (랜덤)
+        let centroids = initialCentroids || [];
+        if (centroids.length < k) {
+          const indices = Array.from({ length: n }, (_, i) => i);
+          for (let i = n - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+          }
+          for (let i = centroids.length; i < k; i++) {
+            const p = initialPoints[indices[i]];
+            centroids.push({ lat: p.lat, lng: p.lng });
+          }
+        }
+
+        let assignments = new Array(n).fill(-1);
+
+        for (let t = 0; t < iter; t++) {
+          // Assignment Step
+          let changed = false;
+          for (let i = 0; i < n; i++) {
+            let best = -1;
+            let bestDist = Infinity;
+            for (let c = 0; c < k; c++) {
+              const d = distanceKmPoint(initialPoints[i], centroids[c]);
+              if (d < bestDist) {
+                bestDist = d;
+                best = c;
+              }
+            }
+            if (assignments[i] !== best) {
+              assignments[i] = best;
+              changed = true;
+            }
+          }
+          if (!changed) break;
+
+          // Update Centroids Step
+          const sumLat = new Array(k).fill(0);
+          const sumLng = new Array(k).fill(0);
+          const cnt = new Array(k).fill(0);
+          for (let i = 0; i < n; i++) {
+            const g = assignments[i];
+            if (g >= 0) {
+              sumLat[g] += initialPoints[i].lat;
+              sumLng[g] += initialPoints[i].lng;
+              cnt[g] += 1;
+            }
+          }
+          for (let c = 0; c < k; c++) {
+            if (cnt[c] > 0) {
+              centroids[c] = {
+                lat: sumLat[c] / cnt[c],
+                lng: sumLng[c] / cnt[c],
+              };
+            } else {
+              // 빈 그룹 재초기화 로직 (가장 멀리 떨어진 포인트로 재할당 시도)
+              let maxDist = -1;
+              let farthestPoint = null;
+              const referenceCentroid = centroids[(c + 1) % k] || START_POINT;
+
+              initialPoints.forEach((p, pIdx) => {
+                const isAssignedToOther =
+                  assignments[pIdx] !== -1 && cnt[assignments[pIdx]] > 1;
+                if (!isAssignedToOther) {
+                  const dist = distanceKmPoint(p, referenceCentroid);
+                  if (dist > maxDist) {
+                    maxDist = dist;
+                    farthestPoint = p;
+                  }
+                }
+              });
+              if (farthestPoint) {
+                centroids[c] = {
+                  lat: farthestPoint.lat,
+                  lng: farthestPoint.lng,
+                };
+              } else {
+                centroids[c] = { lat: START_POINT.y, lng: START_POINT.x };
+              }
+            }
+          }
+        }
+
+        return { assignments, centroids };
+      }
+
+      function groupWithConstraints(maxSize, numGroups) {
+        const ANSEONG_CITY = "안성시";
+        // 안성시 그룹을 위한 임시 그룹 인덱스 (K-means 결과와 겹치지 않도록 임의의 높은 수)
+        const ANSEONG_TEMP_GROUP = 9999;
+        const MAX_ITER = 5;
+
+        const allValidPoints = [];
+        points.forEach((p, idx) => {
+          if (
+            !p.failed &&
+            typeof p.lat === "number" &&
+            typeof p.lng === "number"
+          ) {
+            allValidPoints.push({
+              idx: idx,
+              lat: p.lat,
+              lng: p.lng,
+              city: getCityFromAddress(p.original),
+              originalIndex: idx,
+            });
+          }
+        });
+
+        const n = allValidPoints.length;
+        if (n === 0) return null;
+
+        if (!maxSize || maxSize <= 0) maxSize = n;
+        if (!numGroups || numGroups <= 0) numGroups = 1;
+
+        const minGroups = Math.ceil(n / maxSize);
+        statusEl.textContent = `전체 ${n}가구 / 최대 ${maxSize}가구 기준 이론상 최소 그룹 수: ${minGroups}개`;
+
+        const assignments = new Array(n).fill(-1);
+
+        // 1. [핵심] 안성시 주소 강제 전처리
+        const anseongPoints = [];
+        const otherPoints = [];
+
+        allValidPoints.forEach((p, i) => {
+          if (p.city === ANSEONG_CITY) {
+            anseongPoints.push(i);
+          } else {
+            otherPoints.push(i);
+          }
+        });
+
+        // 안성 주소가 있으면, 임시 그룹 인덱스로 강제 할당
+        let anseongGroupAssigned = false;
+        if (anseongPoints.length > 0) {
+          anseongPoints.forEach((i) => (assignments[i] = ANSEONG_TEMP_GROUP));
+          anseongGroupAssigned = true;
+        }
+
+        // 2. 안성을 제외한 나머지 주소에 K-means 적용
+        const numAnseong = anseongGroupAssigned ? 1 : 0;
+        const numOtherGroups = numGroups - numAnseong;
+
+        if (otherPoints.length > 0 && numOtherGroups > 0) {
+          const otherPointsData = otherPoints.map((i) => allValidPoints[i]);
+          // K-means를 0부터 numOtherGroups-1 범위로 실행
+          const { assignments: kmAssignments } = runKMeansPureDistance(
+            otherPointsData,
+            numOtherGroups
+          );
+
+          // K-means 결과를 원래 assignments 배열에 반영 (0부터 시작)
+          kmAssignments.forEach((g, i) => {
+            if (g !== -1) {
+              const originalIndex = otherPoints[i];
+              assignments[originalIndex] = g;
+            }
+          });
+        }
+
+        // 보조 함수 정의
+        const getGroupedPoints = () => {
+          const result = {};
+          assignments.forEach((g, i) => {
+            if (g >= 0) {
+              if (!result[g]) result[g] = [];
+              result[g].push(i);
+            }
+          });
+          return result;
+        };
+
+        const calculateCentroids = (groups) => {
+          const centroids = {};
+          for (const g in groups) {
+            const arr = groups[g];
+            if (arr.length > 0) {
+              let sLat = 0,
+                sLng = 0;
+              arr.forEach((i) => {
+                sLat += allValidPoints[i].lat;
+                sLng += allValidPoints[i].lng;
+              });
+              centroids[g] = { lat: sLat / arr.length, lng: sLng / arr.length };
+            }
+          }
+          return centroids;
+        };
+
+        // 3. 그룹 크기 제약 해결 (Iterative Refinement)
+        let loop = 0;
+        while (loop < MAX_ITER) {
+          let currentGroups = getGroupedPoints();
+          const centroids = calculateCentroids(currentGroups);
+          let movedCount = 0;
+
+          for (const g in currentGroups) {
+            const groupIndex = parseInt(g, 10);
+            const groupMembers = currentGroups[groupIndex];
+
+            if (groupIndex === ANSEONG_TEMP_GROUP && anseongGroupAssigned)
+              continue;
+
+            if (groupMembers.length > maxSize) {
+              const membersWithDist = groupMembers
+                .map((i) => {
+                  const p = allValidPoints[i];
+                  return {
+                    indexInValidPoints: i,
+                    distance: distanceKmPoint(p, centroids[groupIndex]),
+                  };
+                })
+                .sort((a, b) => b.distance - a.distance);
+
+              const excessCount = groupMembers.length - maxSize;
+
+              for (let k = 0; k < excessCount; k++) {
+                const { indexInValidPoints: i } = membersWithDist[k];
+                const p = allValidPoints[i];
+
+                let bestTargetGroup = -1;
+                let minDistance = Infinity;
+
+                for (const targetG in centroids) {
+                  const targetIndex = parseInt(targetG, 10);
+
+                  if (targetIndex === groupIndex) continue;
+
+                  if (
+                    targetIndex === ANSEONG_TEMP_GROUP &&
+                    p.city !== ANSEONG_CITY
+                  )
+                    continue;
+
+                  const d = distanceKmPoint(p, centroids[targetIndex]);
+
+                  if (currentGroups[targetIndex].length < maxSize) {
+                    if (d < minDistance) {
+                      minDistance = d;
+                      bestTargetGroup = targetIndex;
+                    }
+                  }
+                }
+
+                if (bestTargetGroup !== -1 && bestTargetGroup !== groupIndex) {
+                  assignments[i] = bestTargetGroup;
+                  movedCount++;
+                }
+              }
+            }
+          }
+
+          if (movedCount === 0) break;
+          loop++;
+        }
+
+        // 4. [핵심] 최종 그룹 번호 매기기 (출발점 기준으로 순서 정렬)
+        const finalGroups = getGroupedPoints();
+        const centroids = calculateCentroids(finalGroups);
+        const groupIndices = Object.keys(finalGroups).map((g) =>
+          parseInt(g, 10)
+        );
+
+        // 모든 그룹을 출발점 기준으로 정렬 (가장 가까운 그룹이 맨 앞으로 오도록)
+        groupIndices.sort((a, b) => {
+          if (!centroids[a] || !centroids[b]) return 0;
+
+          const da = distanceKmPoint(centroids[a], {
+            lat: START_POINT.y,
+            lng: START_POINT.x,
+          });
+          const db = distanceKmPoint(centroids[b], {
+            lat: START_POINT.y,
+            lng: START_POINT.x,
+          });
+          return da - db;
+        });
+
+        // 새 그룹 번호 매핑 (0, 1, 2...로 순차적 부여)
+        const remap = {};
+        let nextGroupNum = 0;
+
+        groupIndices.forEach((g) => {
+          if (finalGroups[g].length > 0) {
+            remap[g] = nextGroupNum++; // 가장 가까운 그룹이 0번(그룹 1번)
+          }
+        });
+
+        // 5. points 배열에 최종 그룹 인덱스 반영 (0이 그룹 1번, 1이 그룹 2번...)
+        points.forEach((p, i) => {
+          p.groupIndex = null;
+        });
+
+        allValidPoints.forEach((info, i) => {
+          const srcGroup = assignments[i];
+          // remap[srcGroup]은 0부터 시작하는 최종 그룹 인덱스
+          if (srcGroup != null && srcGroup >= 0 && remap[srcGroup] != null) {
+            points[info.originalIndex].groupIndex = remap[srcGroup];
+          } else {
+            // 리맵핑되지 않은 유효 포인트는 미지정 처리
+            points[info.originalIndex].groupIndex = null;
+          }
+        });
+
+        saveState();
+        return assignments;
+      }
+
+      // -----------------------------------------------------------
+      // 보조 함수
+      // -----------------------------------------------------------
+
+      function normalizeAddress(str) {
+        if (!str) return "";
+        return str.trim().replace(/\s+/g, " ");
       }
 
       function cbmStatusTag(cbm) {
@@ -694,6 +1095,10 @@
           );
         });
       }
+
+      // -----------------------------------------------------------
+      // 엑셀/데이터 처리
+      // -----------------------------------------------------------
 
       // 엑셀 읽기
       excelInput.addEventListener("change", (e) => {
@@ -766,7 +1171,7 @@
         reader.readAsArrayBuffer(file);
       });
 
-      // 지오코딩
+      // 지오코딩 로직 (이전과 동일)
       function geocodeNaver(query) {
         return new Promise((resolve) => {
           if (!query) {
@@ -855,7 +1260,7 @@
               if (afterCity.length >= 2) {
                 add(city + " " + afterCity.join(" "));
                 const roadNum = afterCity.slice(-2).join(" ");
-                add(city + " " + roadNum);
+                add(roadNum);
               }
             }
             const roadNum2 = t.slice(-2).join(" ");
@@ -866,7 +1271,6 @@
         const jibeon = extractJibeon(originalAddr);
         if (jibeon) {
           add(jibeon);
-          add("평택시 " + jibeon);
         }
 
         return candidates;
@@ -968,275 +1372,59 @@
         );
         const n = valid.length;
         const maxSize = parseInt(maxGroupInput.value, 10);
+
         if (!n || !maxSize || maxSize <= 0) {
+          numGroupsInput.value = "";
           groupSummaryEl.textContent = "";
           return;
         }
-        const minGroups = Math.ceil(n / maxSize);
-        if (!numGroupsInput.value) numGroupsInput.value = minGroups;
 
-        groupSummaryEl.textContent = `현재 가구 수: ${n}개 / 최대 ${maxSize}가구 기준 이론상 최소 그룹 수: ${minGroups}개`;
+        const minGroups = Math.ceil(n / maxSize);
+
+        const recommendedGroups = Math.max(minGroups, 1) + 2;
+
+        let currentNumGroups = parseInt(numGroupsInput.value, 10);
+
+        if (isNaN(currentNumGroups) || currentNumGroups < minGroups) {
+          numGroupsInput.value = recommendedGroups;
+          currentNumGroups = recommendedGroups;
+        }
+
+        groupSummaryEl.textContent =
+          `현재 가구 수: ${n}개 / 최대 ${maxSize}가구 기준 이론상 최소 그룹 수: ${minGroups}개 / ` +
+          `자동 추천 그룹 수: ${recommendedGroups}개 (최소 + 2)`;
       }
+
       maxGroupInput.addEventListener("change", () => {
         updateRecommendedGroups();
         updateGroupSummaryAndList();
       });
-
-      // k-means + 제약 그룹 묶기 (기존 로직 그대로)
-      function runKMeansForValidPoints(
-        validPoints,
-        k,
-        maxIter = 20,
-        trials = 3
-      ) {
-        const n = validPoints.length;
-        if (k > n) k = n;
-
-        function oneRun() {
-          const indices = Array.from({ length: n }, (_, i) => i);
-          for (let i = n - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [indices[i], indices[j]] = [indices[j], indices[i]];
-          }
-          let centroids = [];
-          for (let i = 0; i < k; i++) {
-            const p = validPoints[indices[i]];
-            centroids.push({ lat: p.lat, lng: p.lng });
-          }
-
-          let assignments = new Array(n).fill(0);
-
-          for (let iter = 0; iter < maxIter; iter++) {
-            for (let i = 0; i < n; i++) {
-              let best = 0;
-              let bestDist = Infinity;
-              for (let c = 0; c < k; c++) {
-                const d = distanceKmPoint(validPoints[i], centroids[c]);
-                if (d < bestDist) {
-                  bestDist = d;
-                  best = c;
-                }
-              }
-              assignments[i] = best;
-            }
-
-            const sumLat = new Array(k).fill(0);
-            const sumLng = new Array(k).fill(0);
-            const cnt = new Array(k).fill(0);
-            for (let i = 0; i < n; i++) {
-              const g = assignments[i];
-              sumLat[g] += validPoints[i].lat;
-              sumLng[g] += validPoints[i].lng;
-              cnt[g] += 1;
-            }
-            for (let c = 0; c < k; c++) {
-              if (cnt[c] > 0) {
-                centroids[c] = {
-                  lat: sumLat[c] / cnt[c],
-                  lng: sumLng[c] / cnt[c],
-                };
-              } else {
-                const idx = Math.floor(Math.random() * n);
-                centroids[c] = {
-                  lat: validPoints[idx].lat,
-                  lng: validPoints[idx].lng,
-                };
-              }
-            }
-          }
-
-          let totalDist = 0;
-          for (let i = 0; i < n; i++) {
-            const g = assignments[i];
-            totalDist += distanceKmPoint(validPoints[i], centroids[g]);
-          }
-          return { assignments, centroids, totalDist };
-        }
-
-        let bestRun = null;
-        for (let t = 0; t < trials; t++) {
-          const run = oneRun();
-          if (!bestRun || run.totalDist < bestRun.totalDist) bestRun = run;
-        }
-        return {
-          assignments: bestRun.assignments,
-          centroids: bestRun.centroids,
-        };
-      }
-
-      function groupWithConstraints(maxSize, numGroups) {
-        const validIndices = [];
-        const validPoints = [];
-        points.forEach((p, idx) => {
-          if (
-            !p.failed &&
-            typeof p.lat === "number" &&
-            typeof p.lng === "number"
-          ) {
-            validIndices.push(idx);
-            validPoints.push({ lat: p.lat, lng: p.lng });
-          }
-        });
-
-        const n = validPoints.length;
-        if (n === 0) return null;
-
-        if (!maxSize || maxSize <= 0) maxSize = n;
-        if (!numGroups || numGroups <= 0) numGroups = 1;
-        if (numGroups > n) numGroups = n;
-
-        const minGroups = Math.ceil(n / maxSize);
-        if (numGroups < minGroups) {
-          statusEl.textContent =
-            `전체 ${n}가구 / 최대 ${maxSize}가구 기준 최소 필요 그룹 수는 ${minGroups}개입니다. ` +
-            `현재 ${numGroups}개만 사용해서 일부 그룹은 초과될 수 있어요.`;
-        } else {
-          statusEl.textContent = `전체 ${n}가구 / 최대 ${maxSize}가구 기준 이론상 최소 그룹 수: ${minGroups}개`;
-        }
-
-        let { assignments, centroids } = runKMeansForValidPoints(
-          validPoints,
-          numGroups
-        );
-
-        const groups = Array.from({ length: numGroups }, () => []);
-        for (let i = 0; i < n; i++) {
-          groups[assignments[i]].push(i);
-        }
-
-        const TOLERANCE = 1.3;
-        let changed = true;
-        let loopSafe = 0;
-        while (changed && loopSafe < 5) {
-          changed = false;
-          loopSafe++;
-          for (let g = 0; g < numGroups; g++) {
-            const arr = groups[g];
-            if (!arr.length) continue;
-            let sLat = 0,
-              sLng = 0;
-            arr.forEach((vi) => {
-              sLat += validPoints[vi].lat;
-              sLng += validPoints[vi].lng;
-            });
-            centroids[g] = { lat: sLat / arr.length, lng: sLng / arr.length };
-          }
-
-          outer: for (let g = 0; g < numGroups; g++) {
-            const arr = groups[g];
-            for (let idx = arr.length - 1; idx >= 0; idx--) {
-              const vi = arr[idx];
-              const p = validPoints[vi];
-              const dCur = distanceKmPoint(p, centroids[g]);
-
-              let bestAlt = g;
-              let dAlt = dCur;
-              for (let h = 0; h < numGroups; h++) {
-                if (h === g) continue;
-                const d = distanceKmPoint(p, centroids[h]);
-                if (d < dAlt) {
-                  dAlt = d;
-                  bestAlt = h;
-                }
-              }
-
-              if (
-                bestAlt !== g &&
-                dCur > dAlt * TOLERANCE &&
-                groups[bestAlt].length < maxSize
-              ) {
-                arr.splice(idx, 1);
-                groups[bestAlt].push(vi);
-                changed = true;
-                break outer;
-              }
-            }
-          }
-        }
-
-        centroids = [];
-        for (let g = 0; g < numGroups; g++) {
-          if (groups[g].length === 0) {
-            const idx = Math.floor(Math.random() * n);
-            centroids[g] = {
-              lat: validPoints[idx].lat,
-              lng: validPoints[idx].lng,
-            };
-          } else {
-            let sLat = 0,
-              sLng = 0;
-            groups[g].forEach((vi) => {
-              sLat += validPoints[vi].lat;
-              sLng += validPoints[vi].lng;
-            });
-            centroids[g] = {
-              lat: sLat / groups[g].length,
-              lng: sLng / groups[g].length,
-            };
-          }
-        }
-
-        const order = Array.from({ length: numGroups }, (_, g) => g);
-        order.sort((a, b) => {
-          const da = distanceKmPoint(centroids[a], {
-            lat: START_POINT.y,
-            lng: START_POINT.x,
-          });
-          const db = distanceKmPoint(centroids[b], {
-            lat: START_POINT.y,
-            lng: START_POINT.x,
-          });
-          return da - db;
-        });
-        const remap = {};
-        order.forEach((g, newIdx) => (remap[g] = newIdx));
-
-        const assignmentsAll = new Array(points.length).fill(null);
-        validIndices.forEach((origIdx, vIdx) => {
-          let srcGroup = -1;
-          for (let g = 0; g < numGroups; g++) {
-            if (groups[g].includes(vIdx)) {
-              srcGroup = g;
-              break;
-            }
-          }
-          if (srcGroup >= 0) assignmentsAll[origIdx] = remap[srcGroup];
-        });
-
-        points.forEach((p, i) => {
-          p.groupIndex = assignmentsAll[i];
-        });
-
-        saveState();
-        return assignmentsAll;
-      }
 
       document.getElementById("groupBtn").addEventListener("click", () => {
         if (!points.length) {
           alert("먼저 주소 지오코딩을 해주세요.");
           return;
         }
+
+        updateRecommendedGroups();
+
         const maxSize = parseInt(maxGroupInput.value, 10);
         let numGroups = parseInt(numGroupsInput.value, 10);
 
-        if (!numGroups || numGroups <= 0) {
-          const valid = points.filter(
-            (p) =>
-              !p.failed &&
-              typeof p.lat === "number" &&
-              typeof p.lng === "number"
-          );
-          const n = valid.length;
-          if (!n || !maxSize || maxSize <= 0) {
-            alert("가구 수/최대 가구 수를 먼저 확인해 주세요.");
-            return;
-          }
-          numGroups = Math.ceil(n / maxSize);
-          numGroupsInput.value = numGroups;
+        if (isNaN(numGroups) || numGroups <= 0) {
+          alert("그룹 수가 유효하지 않습니다. '최대 가구 수'를 확인해 주세요.");
+          return;
         }
 
         const assignments = groupWithConstraints(maxSize, numGroups);
         if (!assignments) return;
+
+        const maxG = getMaxGroupIndex();
+        for (let g = 0; g <= maxG; g++) {
+          const key = "g_" + g;
+          if (collapsedGroups[key] === undefined) collapsedGroups[key] = true;
+        }
+        saveCollapseState();
 
         currentViewFilter = "all";
         updateFilterChips();
@@ -1244,12 +1432,15 @@
         updateGroupSummaryAndList();
       });
 
+      // -----------------------------------------------------------
+      // 지도 마커 및 리스트 렌더링/이벤트
+      // -----------------------------------------------------------
+
       function clearMarkers() {
         markers.forEach((m) => m.marker.setMap(null));
         markers = [];
       }
 
-      // 리스트 / 마커 하이라이트 공통 처리
       function clearHighlight() {
         document
           .querySelectorAll(".householdItem.highlight")
@@ -1290,12 +1481,14 @@
 
         points.forEach((p, idx) => {
           if (p.failed || p.lat == null || p.lng == null) return;
+
           const pos = new naver.maps.LatLng(p.lat, p.lng);
           bounds.extend(pos);
 
-          const g = p.groupIndex;
+          const g = p.groupIndex; // 0부터 시작하는 그룹 인덱스
           let icon = null;
           if (g != null && g >= 0) {
+            const groupNum = g + 1; // 화면 표시 그룹 번호 (1부터 시작)
             const color = groupColors[g % groupColors.length];
             icon = {
               content: `<div style="
@@ -1308,7 +1501,7 @@
                 font-size:12px;
                 border:2px solid #fff;
                 box-shadow:0 0 3px rgba(0,0,0,0.5);
-              ">${g + 1}</div>`,
+              ">${groupNum}</div>`,
               size: new naver.maps.Size(24, 24),
               anchor: new naver.maps.Point(12, 12),
             };
@@ -1332,25 +1525,37 @@
         if (!bounds.isEmpty()) map.fitBounds(bounds);
       }
 
+      // [핵심 수정 부분] 팝업에서 그룹 정보가 points[idx].groupIndex를 기반으로 일관되게 표시되도록 수정
       function openMarkerPopup(marker, idx) {
         const p = points[idx];
         if (!p) return;
 
+        // 마커에 표시된 groupIndex를 사용 (0부터 시작하는 인덱스)
+        const currentGroupIndex = p.groupIndex;
+
         const cbmInfo = cbmStatusTag(p.cbmTotal || 0);
         const maxG = getMaxGroupIndex();
         let optionsHtml = `<option value="">미지정</option>`;
+
+        // 드롭다운: 값은 그룹 인덱스(0, 1, 2...)로 저장
         for (let g = 0; g <= maxG; g++) {
-          const selected = p.groupIndex === g ? "selected" : "";
+          const selected = currentGroupIndex === g ? "selected" : "";
           optionsHtml += `<option value="${g}" ${selected}>그룹 ${
-            g + 1
+            g + 1 // 화면 표시는 그룹 번호 + 1
           }</option>`;
         }
 
-        // 👉 그룹 전체 통계 (가구 수 / 품목 / CBM 합계)
+        const currentGroupNum =
+          currentGroupIndex != null ? currentGroupIndex + 1 : "미지정";
+
         let groupSummaryHtml = "";
-        if (p.groupIndex != null && p.groupIndex >= 0) {
+        if (currentGroupIndex != null && currentGroupIndex >= 0) {
           const members = points.filter(
-            (q) => !q.failed && q.groupIndex === p.groupIndex
+            (q) =>
+              !q.failed &&
+              q.lat != null &&
+              q.lng != null &&
+              q.groupIndex === currentGroupIndex
           );
           const hCount = members.length;
           const itemCount = members.reduce(
@@ -1361,14 +1566,10 @@
           const gInfo = cbmStatusTag(cbmSum || 0);
           groupSummaryHtml = `
             <div style="margin-bottom:6px;padding:6px;border-radius:6px;background:#f9fafb;border:1px dashed #e5e7eb;">
-              <div style="font-weight:700;margin-bottom:2px;">그룹 ${
-                p.groupIndex + 1
-              } 요약</div>
+              <div style="font-weight:700;margin-bottom:2px;">그룹 ${currentGroupNum} 요약</div>
               <div style="font-size:11px;line-height:1.5;">
                 가구 수: ${hCount}개 · 품목 수: ${itemCount}개<br/>
-                <span class="cbmBadge ${gInfo.cls}" style="font-size:11px;">${
-            gInfo.text
-          }</span>
+                <span class="cbmBadge ${gInfo.cls}" style="font-size:11px;">${gInfo.text}</span>
               </div>
             </div>`;
         }
@@ -1387,10 +1588,8 @@
         const html = `
           <div style="padding:8px 10px;font-size:12px;max-width:340px;">
             ${
-              p.groupIndex != null && p.groupIndex >= 0
-                ? `<div style="font-weight:700;margin-bottom:4px;">그룹 ${
-                    p.groupIndex + 1
-                  }</div>`
+              currentGroupIndex != null && currentGroupIndex >= 0
+                ? `<div style="font-weight:700;margin-bottom:4px;">그룹 ${currentGroupNum}</div>`
                 : ""
             }
             ${groupSummaryHtml}
@@ -1403,7 +1602,9 @@
                 : ""
             }
             <div style="font-size:11px;color:#6b7280;margin-bottom:4px;">
-              ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}
+              ${p.lat ? p.lat.toFixed(6) : "좌표 없음"}, ${
+          p.lng ? p.lng.toFixed(6) : "좌표 없음"
+        }
             </div>
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:4px 0;" />
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -1434,8 +1635,21 @@
           if (!sel) return;
           sel.onchange = () => {
             const val = sel.value === "" ? null : parseInt(sel.value, 10);
-            points[idx].groupIndex = val;
+
+            const p = points[idx];
+
+            if (val != null && (p.lat == null || p.lng == null)) {
+              alert(
+                "좌표가 없는 가구는 그룹에 할당할 수 없습니다. (미지정으로 재설정됩니다)"
+              );
+              p.groupIndex = null;
+              sel.value = "";
+            } else {
+              p.groupIndex = val;
+            }
+
             saveState();
+            // 그룹이 변경되었으므로 리스트와 마커 모두 재렌더링하여 동기화
             renderMarkers();
             updateGroupSummaryAndList();
           };
@@ -1448,10 +1662,13 @@
         const failed = [];
 
         points.forEach((p, idx) => {
-          if (p.failed) {
+          // [핵심 검증] 좌표가 없거나 실패한 경우, groupIndex를 무조건 null로 설정하여 미지정/실패 그룹으로 분류
+          if (p.failed || p.lat == null || p.lng == null) {
             failed.push({ p, idx });
+            p.groupIndex = null; // 강제 null 처리
           } else if (p.groupIndex == null || p.groupIndex < 0) {
             unassigned.push({ p, idx });
+            p.groupIndex = null;
           } else {
             const g = p.groupIndex;
             if (!grouped[g]) grouped[g] = [];
@@ -1463,9 +1680,20 @@
           .map((x) => parseInt(x, 10))
           .sort((a, b) => a - b);
 
-        const validCount = points.filter((p) => !p.failed).length;
+        const validCount = points.filter(
+          (p) =>
+            !p.failed && typeof p.lat === "number" && typeof p.lng === "number"
+        ).length;
         const maxSize = parseInt(maxGroupInput.value, 10) || 0;
         const minGroups = maxSize ? Math.ceil(validCount / maxSize) : 0;
+
+        groupIndices.forEach((g) => {
+          const key = "g_" + g;
+          if (collapsedGroups[key] === undefined) {
+            collapsedGroups[key] = true;
+          }
+        });
+        saveCollapseState();
 
         const view = currentViewFilter;
         groupSummaryEl.textContent =
@@ -1486,6 +1714,21 @@
           const color = groupColors[g % groupColors.length];
           const key = "g_" + g;
           const isCollapsed = !!collapsedGroups[key];
+          const groupNum = g + 1; // 화면 표시 그룹 번호
+
+          const groupCity = list.reduce((map, it) => {
+            const city = getCityFromAddress(it.p.original);
+            map[city] = (map[city] || 0) + 1;
+            return map;
+          }, {});
+          const cities = Object.keys(groupCity).sort(
+            (a, b) => groupCity[b] - groupCity[a]
+          );
+          const primaryCity = cities.length > 0 ? cities[0] : "";
+          const cityTag =
+            primaryCity && primaryCity !== "UNKNOWN"
+              ? primaryCity.replace("시", "")
+              : "혼합";
 
           html += `<div class="groupCard ${
             isCollapsed ? "collapsed" : ""
@@ -1493,10 +1736,8 @@
             <div class="groupHeader" style="background:${color}18;">
               <div class="groupHeaderMain">
                 <span class="groupToggleIcon">▾</span>
-                <span class="groupTitle">그룹 ${
-                  g + 1
-                } (${groupSize} 가구, 품목 ${groupItems}개)</span>
-                <span class="groupTag">기준 ${maxSize || "-"}가구</span>
+                <span class="groupTitle">그룹 ${groupNum} (${groupSize} 가구, 품목 ${groupItems}개)</span>
+                <span class="groupTag">${cityTag} 주축</span>
               </div>
               <div class="cbmBadge ${cbmInfo.cls}">${cbmInfo.text}</div>
             </div>
@@ -1571,13 +1812,17 @@
         const cbmInfo = cbmStatusTag(p.cbmTotal || 0);
         const maxG = getMaxGroupIndex();
         let groupOptions = `<option value="">미지정</option>`;
+
+        // 드롭다운 옵션: value는 인덱스(0부터), 텍스트는 번호(1부터)
         for (let g = 0; g <= maxG; g++) {
           const selected = p.groupIndex === g ? "selected" : "";
           groupOptions += `<option value="${g}" ${selected}>그룹 ${
             g + 1
           }</option>`;
         }
+
         const widthPercent = Math.min(100, ((p.cbmTotal || 0) / 10) * 100);
+        const selectValue = p.groupIndex != null ? p.groupIndex : "";
 
         return `
           <div class="householdItem" data-idx="${idx}" draggable="true">
@@ -1585,13 +1830,13 @@
               <div style="flex:1;min-width:0;">
                 <div class="addrMain">${p.original}</div>
                 <div class="addrSub">
-                  ${cbmInfo.text}
+                  ${cbmInfo.text} / ${getCityFromAddress(p.original)}
                 </div>
               </div>
               ${
                 isFailed
                   ? ""
-                  : `<select class="groupSelect" data-idx="${idx}">
+                  : `<select class="groupSelect" data-idx="${idx}" value="${selectValue}">
                       ${groupOptions}
                      </select>`
               }
@@ -1648,8 +1893,20 @@
             if (draggingIdx == null) return;
             const attr = card.getAttribute("data-group");
             if (attr === "failed") return;
+
             let newGroup = null;
             if (attr !== "unassigned") newGroup = parseInt(attr, 10);
+
+            const p = points[draggingIdx];
+
+            if (newGroup != null && (p.lat == null || p.lng == null)) {
+              alert(
+                "좌표가 없는 가구는 그룹에 할당할 수 없습니다. (미지정 그룹만 가능)"
+              );
+              points[draggingIdx].groupIndex = null;
+              newGroup = null;
+            }
+
             points[draggingIdx].groupIndex = newGroup;
             saveState();
             renderMarkers();
@@ -1661,9 +1918,11 @@
         document.querySelectorAll(".groupHeader").forEach((header) => {
           header.addEventListener("click", (e) => {
             const card = header.closest(".groupCard");
-            const key = "g_" + card.getAttribute("data-group");
+            const gAttr = card.getAttribute("data-group");
+            const key = "g_" + gAttr;
             const collapsed = card.classList.toggle("collapsed");
             collapsedGroups[key] = collapsed;
+            saveCollapseState();
           });
         });
 
@@ -1678,8 +1937,8 @@
               const pos = new naver.maps.LatLng(p.lat, p.lng);
               map.setCenter(pos);
               map.setZoom(13);
+              highlightHouseholdAndMarker(idx, { fromList: true });
             }
-            highlightHouseholdAndMarker(idx, { fromList: true });
           });
           itemEl.addEventListener("mouseleave", () => {
             clearHighlight();
@@ -1702,7 +1961,19 @@
           sel.addEventListener("change", () => {
             const idx = parseInt(sel.getAttribute("data-idx"), 10);
             const val = sel.value === "" ? null : parseInt(sel.value, 10);
-            points[idx].groupIndex = val;
+
+            const p = points[idx];
+
+            if (val != null && (p.lat == null || p.lng == null)) {
+              alert(
+                "좌표가 없는 가구는 그룹에 할당할 수 없습니다. (미지정으로 재설정됩니다)"
+              );
+              p.groupIndex = null;
+              sel.value = "";
+            } else {
+              p.groupIndex = val;
+            }
+
             saveState();
             renderMarkers();
             updateGroupSummaryAndList();
@@ -1728,6 +1999,12 @@
         )
           return;
         points = [];
+        collapsedGroups = {
+          g_unassigned: true,
+          g_failed: true,
+        };
+        saveCollapseState();
+
         saveState();
         addrTextarea.value = "";
         clearMarkers();
@@ -1736,7 +2013,7 @@
         groupSummaryEl.textContent = "";
       });
 
-      // 엑셀 내보내기 (기존 로직)
+      // 엑셀 내보내기
       document.getElementById("exportBtn").addEventListener("click", () => {
         if (!excelInput.files[0]) {
           alert("먼저 엑셀 파일을 불러와 주세요.");
@@ -1767,9 +2044,17 @@
             const newRow = row.slice();
             const addr = normalizeAddress(row[addrCol] || "");
             const g = addrToGroup.get(addr) || "";
+
+            // 기존 열에 그룹 정보가 추가될 경우를 대비해 새로운 열에 추가
+            // (가장 마지막 열에 추가)
             newRow.push(g);
             return newRow;
           });
+
+          // 헤더 행에 '그룹' 열 추가
+          if (outRows.length > 0) {
+            outRows[0].push("그룹");
+          }
 
           const newSheet = XLSX.utils.aoa_to_sheet(outRows);
           const outWb = XLSX.utils.book_new();
@@ -1784,7 +2069,9 @@
           });
           const a = document.createElement("a");
           a.href = URL.createObjectURL(blob);
-          a.download = "grouped_result.xlsx";
+          a.download = `grouped_result_${new Date()
+            .toISOString()
+            .slice(0, 10)}.xlsx`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
