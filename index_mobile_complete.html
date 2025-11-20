@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>배차 시스템 (모바일 리스트 샘플)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 실제 사용 시 YOUR_KEY 를 네이버 지도 Client ID 로 교체 -->
+    <script
+      type="text/javascript"
+      src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=ms2yp98bvf&submodules=geocoder"
+    ></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f3f4f6;
+      }
+      #map {
+        width: 100%;
+        height: 55vh;
+      }
+
+      #list {
+        padding: 8px 8px 16px;
+      }
+
+      .card {
+        background: #fff;
+        margin: 8px 4px 10px;
+        padding: 14px 14px 12px;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+        font-size: 14px;
+      }
+      .card-title {
+        font-weight: 700;
+        margin-bottom: 4px;
+        font-size: 15px;
+      }
+      .card-product {
+        margin-top: 2px;
+        font-size: 14px;
+      }
+      .card-meta {
+        margin-top: 6px;
+        font-size: 13px;
+        color: #6b7280;
+      }
+      .card-order {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #4b5563;
+      }
+
+      .icon-row {
+        display: flex;
+        gap: 14px;
+        margin-top: 10px;
+        margin-bottom: 4px;
+      }
+      .icon-btn {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f3f4f6;
+        border-radius: 999px;
+        font-size: 21px;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) inset;
+      }
+
+      .detail {
+        display: block;
+        margin-top: 4px;
+        font-size: 13px;
+        color: #374151;
+      }
+      .detail-title {
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      .detail ul {
+        list-style: none;
+        margin: 2px 0 0;
+        padding-left: 0;
+      }
+      .detail li::before {
+        content: "- ";
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="list"></div>
+
+    <script>
+      // 샘플 데이터 구조
+      // 실제 엑셀 연동 시: 주문번호 = 5번째 컬럼, 운송장번호 = 6번째 컬럼에 매핑하면 됨.
+      const households = [
+        {
+          id: 1,
+          lat: 37.0,
+          lng: 127.0,
+          address: "경기 평택시 예시로 1",
+          phone: "01012345678",
+          product:
+            "삼익가구 디세터 패브릭 템바보드 LED조명 빅서랍 3단 수납침대 Q",
+          vendor: "https://example.com/product/1",
+          orderNo: "ORD-20251118-0001", // 엑셀 5번째 열
+          invoiceNo: "INV-50248128604", // 엑셀 6번째 열 (운송장)
+          setCount: 1,
+          parts: [
+            "디세터 패브릭 템바보드 LED조명 빅서랍 3단 수납침대 Q_본체",
+            "디세터 패브릭 템바보드 LED조명 빅서랍 3단 수납침대 Q_헤드보드",
+            "디세터 패브릭 템바보드 LED조명 빅서랍 3단 수납침대 Q_서랍세트",
+            "디세터 패브릭 템바보드 LED조명 빅서랍 3단 수납침대 Q_쿠션2P",
+          ],
+        },
+        {
+          id: 2,
+          lat: 37.01,
+          lng: 127.001,
+          address: "경기 평택시 예시로 2",
+          phone: "01098765432",
+          product: "페니코 리츠 무헤드 3단 수납침대 SS 오트밀베이지",
+          vendor: "https://example.com/product/2",
+          orderNo: "ORD-20251118-0002",
+          invoiceNo: "INV-50434569370",
+          setCount: 1,
+          parts: [
+            "페니코 리츠 무헤드 3단 수납침대 SS_본체",
+            "페니코 리츠 무헤드 3단 수납침대 SS_매트리스",
+            "페니코 리츠 무헤드 3단 수납침대 SS_서랍세트",
+          ],
+        },
+      ];
+
+      let map;
+
+      function initMap() {
+        map = new naver.maps.Map("map", {
+          center: new naver.maps.LatLng(37.003, 127.0),
+          zoom: 13,
+        });
+
+        households.forEach((h) => {
+          const marker = new naver.maps.Marker({
+            position: new naver.maps.LatLng(h.lat, h.lng),
+            map: map,
+            icon: {
+              content: `<div style="
+          background:#2563eb;
+          color:#fff;
+          width:40px;
+          height:40px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border-radius:999px;
+          font-size:17px;
+          box-shadow:0 2px 6px rgba(15,23,42,0.35);
+        ">${h.parts.length}</div>`,
+            },
+          });
+
+          naver.maps.Event.addListener(marker, "click", () =>
+            scrollToCard(h.id)
+          );
+        });
+      }
+
+      function scrollToCard(id) {
+        const el = document.getElementById("card-" + id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+
+      function renderList() {
+        const list = document.getElementById("list");
+        list.innerHTML = "";
+
+        households.forEach((h) => {
+          const div = document.createElement("div");
+          div.className = "card";
+          div.id = "card-" + h.id;
+
+          const partsHtml = h.parts.map((p) => `<li>${p}</li>`).join("");
+
+          div.innerHTML = `
+      <div class="card-title">${h.address}</div>
+      <div class="card-product">🛏️ ${h.product}</div>
+
+      <div class="card-meta">
+        세트 ${h.setCount}개 · 부품 ${h.parts.length}개
+      </div>
+
+      <div class="card-order">
+        주문번호 ${h.orderNo} · 운송장 ${h.invoiceNo}
+      </div>
+
+      <div class="icon-row">
+        <div class="icon-btn" onclick="window.location.href='tel:${h.phone}'">📞</div>
+        <div class="icon-btn" onclick="window.open('${h.vendor}','_blank')">🛒</div>
+        <div class="icon-btn" onclick="toggleDetail(${h.id})">📦</div>
+      </div>
+
+      <div class="detail" id="detail-${h.id}">
+        <div class="detail-title">상세 품목</div>
+        <ul>
+          ${partsHtml}
+        </ul>
+      </div>
+    `;
+          list.appendChild(div);
+        });
+      }
+
+      function toggleDetail(id) {
+        const el = document.getElementById("detail-" + id);
+        if (!el) return;
+        if (el.style.display === "none" || el.style.display === "") {
+          el.style.display = "block";
+        } else {
+          el.style.display = "none";
+        }
+      }
+
+      window.onload = function () {
+        initMap();
+        renderList();
+      };
+    </script>
+  </body>
+</html>
