@@ -376,57 +376,16 @@
         overflow-y: auto;
         padding: 6px 10px 10px;
       }
-      #mobile-summary {
-        padding: 4px 12px 6px;
-        font-size: 11px;
-        color: #4b5563;
-        border-top: 1px solid #e5e7eb;
-        border-bottom: 1px solid #e5e7eb;
-        background: #f9fafb;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      #mobile-summary strong {
-        font-weight: 700;
-      }
-      .mobile-actions {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-      .mobile-action-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 4px 10px;
-        border-radius: 999px;
-        border: 1px solid #d1d5db;
-        background: #f3f4f6;
-        font-size: 11px;
-        font-weight: 600;
-        color: #374151;
-        text-decoration: none;
-        white-space: nowrap;
-      }
-      .mobile-action-btn.primary {
-        border-color: #bfdbfe;
-        background: #eff6ff;
-        color: #1d4ed8;
-      }
-    
-      
       .mobile-house-item {
-        margin-bottom: 10px;
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: #ffffff;
+        margin-bottom: 6px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: #f9fafb;
         border: 1px solid #e5e7eb;
         font-size: 12px;
         display: grid;
-        gap: 4px;
+        gap: 3px;
         cursor: pointer;
-        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
       }
       .mobile-house-item.active {
         border-color: #3b82f6;
@@ -446,73 +405,22 @@
         color: #6b7280;
       }
       .mobile-house-bottom {
-        margin-top: 6px;
+        margin-top: 2px;
         display: flex;
         justify-content: space-between;
         align-items: center;
         font-size: 11px;
         color: #4b5563;
       }
-      .mobile-house-detail {
-        margin-top: 4px;
-        padding-top: 4px;
-        border-top: 1px dashed #e5e7eb;
-        font-size: 11px;
-        color: #4b5563;
-      }
-      .mobile-detail-list {
-        margin: 2px 0 0 16px;
-        padding-left: 0;
-      }
-      .mobile-detail-list li {
-        list-style: disc;
-        margin-bottom: 2px;
-      }
-      .mobile-icon-buttons {
-        display: inline-flex;
-        gap: 12px;
-        align-items: center;
-      }
-      .mobile-icon-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 999px;
-        border: 1px solid #d1d5db;
-        background: #f9fafb;
-        font-size: 16px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-      }
-      .mobile-icon-btn:hover {
-        background: #e5e7eb;
-      }
-      .desktop-phone-link {
+      .mobile-phone-link {
         color: #2563eb;
         text-decoration: none;
-        font-weight: 600;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-      }
-      .desktop-phone-link::before {
-        content: "📞";
       }
 
-
-      .mobile-phone-link {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 4px 10px;
-        border-radius: 999px;
-        border: 1px solid #bfdbfe;
-        background: #eff6ff;
-        color: #1d4ed8;
-        font-weight: 600;
+.mobile-nav-link {
+        color: #2563eb;
         text-decoration: none;
-        gap: 4px;
+        font-size: 16px;
       }
 
       /* 반응형: 모바일일 때 기사 모드 레이아웃 */
@@ -553,12 +461,7 @@
           font-size: 11px;
         }
       }
-    
-      #orderToggleBtn,
-      #orderToggleBtnMobile {
-        display: none !important;
-      }
-</style>
+    </style>
   </head>
 
   <body>
@@ -576,7 +479,6 @@
         <!-- 모바일용 하단 패널 -->
         <div id="mobile-panel">
           <div id="mobile-handle"></div>
-          <div id="mobile-summary"></div>
           <div id="mobile-list"></div>
         </div>
       </div>
@@ -662,8 +564,6 @@
         idxVIName: 7,
         idxSKUName: 9,
         idxVINumber: 5,
-        idxOrderNo: 4,
-        idxWaybill: 5,
       };
 
       const markerByHouseId = new Map();
@@ -753,26 +653,25 @@
         if (!phone) return "";
         return "tel:" + String(phone).replace(/[^\d+]/g, "");
       }
-
-      function makeNaverDirectionUrl(h) {
+      function makeNavUrl(h) {
+        if (!h) return "";
+        // Google Maps directions: 출발지(고정) -> 도착지(해당 주소)
         if (h.lat != null && h.lng != null) {
           return (
-            "https://map.naver.com/v5/directions/" +
-            START_POINT_LNG +
-            "," +
+            "https://www.google.com/maps/dir/?api=1&origin=" +
             START_POINT_LAT +
-            "/" +
-            h.lng +
             "," +
-            h.lat
+            START_POINT_LNG +
+            "&destination=" +
+            h.lat +
+            "," +
+            h.lng
           );
         }
-        const q = h.normAddress || h.rawAddress;
-        if (!q) return "https://map.naver.com/v5/";
-        return (
-          "https://map.naver.com/v5/search/" + encodeURIComponent(String(q))
-        );
+        const q = encodeURIComponent(h.normAddress || h.rawAddress || "");
+        return "https://www.google.com/maps/dir/?api=1&destination=" + q;
       }
+
 
       function makeCoupangUrlFromVendor(vendorId) {
         if (!vendorId) return "https://www.coupang.com/";
@@ -824,14 +723,6 @@
               ["vi number", "vinumber", "invoice"],
               5
             );
-            colConfig.idxOrderNo = findHeaderIndex(
-              ["주문번호", "order no", "orderno", "order number"],
-              4
-            );
-            colConfig.idxWaybill = findHeaderIndex(
-              ["운송장", "waybill", "tracking", "송장번호"],
-              5
-            );
             logInfo("헤더 감지: 헤더 행을 사용합니다.");
           } else {
             headers = firstRow.map((_, i) => `COL${i + 1}`);
@@ -846,8 +737,6 @@
             colConfig.idxVIName = 7;
             colConfig.idxSKUName = 9;
             colConfig.idxVINumber = 5;
-            colConfig.idxOrderNo = 4;
-            colConfig.idxWaybill = 5;
             logInfo("헤더 없음: 고정 컬럼 인덱스를 사용합니다.");
           }
 
@@ -913,8 +802,6 @@
               representLabel: "",
               orderInGroup: null,
               phone: null,
-              orderNo: null,
-              waybill: null,
               city: "OTHER",
               isOutskirts: false,
             });
@@ -930,23 +817,6 @@
           if (!h.phone && idxPhone >= 0 && idxPhone < row.cells.length) {
             const ph = row.cells[idxPhone];
             if (ph) h.phone = String(ph);
-          }
-
-          if (
-            h.orderNo == null &&
-            colConfig.idxOrderNo >= 0 &&
-            colConfig.idxOrderNo < row.cells.length
-          ) {
-            const on = row.cells[colConfig.idxOrderNo];
-            if (on != null && on !== "") h.orderNo = String(on);
-          }
-          if (
-            h.waybill == null &&
-            colConfig.idxWaybill >= 0 &&
-            colConfig.idxWaybill < row.cells.length
-          ) {
-            const wb = row.cells[colConfig.idxWaybill];
-            if (wb != null && wb !== "") h.waybill = String(wb);
           }
         }
 
@@ -1428,35 +1298,6 @@
           : h.orderInGroup;
       }
 
-      function changeHouseGroup(houseId, newGroupId) {
-        newGroupId = Number(newGroupId);
-        if (!newGroupId) return;
-        const h = households.find((x) => x.id === houseId);
-        if (!h) return;
-        const oldGroupId = h.groupId;
-        if (oldGroupId === newGroupId) return;
-
-        const oldGroup = groups.find((g) => g.id === oldGroupId);
-        if (oldGroup) {
-          oldGroup.memberIds = oldGroup.memberIds.filter((id) => id !== houseId);
-        }
-
-        let newGroup = groups.find((g) => g.id === newGroupId);
-        if (!newGroup) {
-          newGroup = { id: newGroupId, memberIds: [] };
-          groups.push(newGroup);
-        }
-        if (!newGroup.memberIds.includes(houseId)) {
-          newGroup.memberIds.push(houseId);
-        }
-        h.groupId = newGroupId;
-
-        groups.sort((a, b) => a.id - b.id);
-        computeOrdersForAllGroups();
-        renderAll();
-      }
-
-
       /* ===== 지도 & 마커 ===== */
       function ensureMap() {
         if (map) return;
@@ -1486,25 +1327,13 @@
         return GROUP_COLORS[idx % GROUP_COLORS.length];
       }
 
-      
       function makeMarkerIcon(groupId, opts) {
         const options = opts || {};
         const focused = !!options.focused;
         const dimmed = !!options.dimmed;
         const orderNumber = options.orderNumber;
-        const itemCount = options.itemCount;
 
-        const isMobile = !!isMobileMode;
-
-        // 모바일: 숫자 없이 마커만 표시 / PC: 그룹 번호 표시
-        let labelText = "";
-        if (!isMobile && groupId != null) {
-          labelText = String(groupId);
-        } else if (!isMobile && orderNumber != null) {
-          labelText = String(orderNumber);
-        }
-
-        const baseColor = isMobile ? "#3b82f6" : getGroupColor(groupId);
+        const baseColor = getGroupColor(groupId);
         const zoom =
           map && typeof map.getZoom === "function" ? map.getZoom() : 12;
 
@@ -1521,15 +1350,43 @@
           pts.push(`${cx + r2 * Math.cos(ang)},${cy + r2 * Math.sin(ang)}`);
         }
 
-        const totalW = diameter;
-        const totalH = diameter;
+        const vx = cx + radius * Math.cos(-Math.PI / 8);
+        const vy = cy + radius * Math.sin(-Math.PI / 8);
+
+        const badgeR = 8;
+        const overlap = 6;
+        const bx = vx - badgeR + 2 - overlap;
+        const by = vy - badgeR + 2 - overlap;
+
+        const extraRight = Math.max(0, bx + badgeR * 2 - diameter) + 2;
+        const extraTop = Math.max(0, 0 - by) + 2;
+        const totalW = diameter + extraRight;
+        const totalH = diameter + extraTop;
 
         const fillOpacity = dimmed ? 0.6 : 1.0;
         const centralTextSize = Math.max(11, 11 + (zoom - 12));
+        const orderTextSize = 9;
+
+        const badgeSvg =
+          orderNumber != null
+            ? `
+      <g transform="translate(${extraRight / 2},${
+                extraTop / 2
+              })" filter="url(#mkShadow)">
+        <circle cx="${bx + badgeR}" cy="${
+                by + badgeR
+              }" r="${badgeR}" fill="rgba(17,17,17,${BADGE_ALPHA})" />
+        <text x="${bx + badgeR}" y="${
+                by + badgeR
+              }" text-anchor="middle" dominant-baseline="central"
+              font-size="${orderTextSize}" font-weight="800" fill="#ffffff"
+              style="opacity:.95">${orderNumber}</text>
+      </g>`
+            : "";
 
         const svg = `<svg xmlns="http://www.w3.org/2000/svg"
           width="${totalW}" height="${totalH}"
-          viewBox="0 0 ${totalW} ${totalH}">
+          viewBox="${-extraRight / 2} ${-extraTop / 2} ${totalW} ${totalH}">
         <defs>
           <filter id="mkShadow" x="-50%" y="-50%" width="200%" height="200%">
             <feDropShadow dx="0" dy="1.2" stdDeviation="1.2"
@@ -1544,18 +1401,21 @@
               dominant-baseline="central"
               font-size="${centralTextSize}" font-weight="800"
               fill="#ffffff"
-              style="paint-order:stroke;stroke:#000;stroke-width:.5;opacity:${dimmed ? 0.9 : 1}">${labelText}</text>
+              style="paint-order:stroke;stroke:#000;stroke-width:.5;opacity:${
+                dimmed ? 0.9 : 1
+              }">${groupId || ""}</text>
+        ${badgeSvg}
       </svg>`;
 
         return {
           url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
           size: new naver.maps.Size(totalW, totalH),
           origin: new naver.maps.Point(0, 0),
-          anchor: new naver.maps.Point(totalW / 2, totalH / 2),
+          anchor: new naver.maps.Point(diameter / 2, diameter / 2),
         };
       }
 
-function renderMarkers() {
+      function renderMarkers() {
         ensureMap();
         markerByHouseId.forEach((mk) => mk.setMap(null));
         markerByHouseId.clear();
@@ -1564,7 +1424,6 @@ function renderMarkers() {
           if (h.lat == null || h.lng == null) return;
           const icon = makeMarkerIcon(h.groupId, {
             orderNumber: getDisplayOrder(h),
-            itemCount: h.totalParts,
           });
           const mk = new naver.maps.Marker({
             position: new naver.maps.LatLng(h.lat, h.lng),
@@ -1586,10 +1445,9 @@ function renderMarkers() {
           const h = households.find((x) => x.id === id);
           if (!h) return;
           const focused = uiState.focusedHouseholdId === h.id;
-          const inGroup = isMobileMode
-            ? true
-            : uiState.focusedGroupId != null &&
-              h.groupId === uiState.focusedGroupId;
+          const inGroup =
+            uiState.focusedGroupId != null &&
+            h.groupId === uiState.focusedGroupId;
           const emphasized = focused || inGroup;
 
           mk.setIcon(
@@ -1879,210 +1737,113 @@ function renderMarkers() {
       }
 
       /* ===== 모바일 리스트 ===== */
-      
-      
-      
-function renderMobileList() {
+      function renderMobileList() {
         const list = document.getElementById("mobile-list");
-        const summaryEl = document.getElementById("mobile-summary");
         if (!list) return;
 
         list.innerHTML = "";
-        if (summaryEl) summaryEl.innerHTML = "";
 
         if (!households.length) {
-          if (summaryEl) summaryEl.textContent = "";
           list.innerHTML =
             '<div style="padding:8px 4px;font-size:12px;color:#6b7280;">엑셀 파일을 먼저 불러오세요.</div>';
           return;
         }
 
-        // 상단 요약: 전체 가구수 / 품목수 / CBM (CBM 0 가구는 제외)
-        const visibleHouseholds = households.filter((h) => h.cbmSum > 0);
-        if (summaryEl) {
-          const totalHouse = visibleHouseholds.length;
-          const totalItems = visibleHouseholds.reduce(
-            (s, h) => s + h.totalParts,
-            0
-          );
-          const totalCbm = visibleHouseholds
-            .reduce((s, h) => s + h.cbmSum, 0)
-            .toFixed(CBM_PRECISION);
+        const sortedHouse = households.slice().sort((a, b) => {
+          if (a.groupId !== b.groupId) return a.groupId - b.groupId;
+          return (getDisplayOrder(a) ?? 999) - (getDisplayOrder(b) ?? 999);
+        });
 
-          const left = document.createElement("span");
-          left.innerHTML = `<strong>총 ${totalHouse}가구</strong> · 품목 ${totalItems}개 · CBM ${totalCbm}`;
+        let currentGroupId = null;
+        sortedHouse.forEach((h) => {
+          if (currentGroupId !== h.groupId) {
+            currentGroupId = h.groupId;
+            const header = document.createElement("div");
+            header.style.cssText =
+              "font-size:12px;font-weight:700;margin:4px 0 2px;color:#111827;";
+            header.textContent = `그룹 ${currentGroupId}`;
+            list.appendChild(header);
+          }
 
-          const actions = document.createElement("div");
-          actions.className = "mobile-actions";
-          summaryEl.appendChild(left);
-          summaryEl.appendChild(actions);
-        }
-
-        // 배송 순서 기준 정렬 (표시는 안 하지만 정렬에는 사용)
-        const sorted = visibleHouseholds
-          .slice()
-          .sort((a, b) => {
-            return (getDisplayOrder(a) ?? 999) - (getDisplayOrder(b) ?? 999);
-          });
-
-        sorted.forEach((h) => {
           const item = document.createElement("div");
           item.className =
             "mobile-house-item" +
             (uiState.focusedHouseholdId === h.id ? " active" : "");
+          item.onclick = () =>
+            focusHousehold(h.id, { fromList: true, openDetail: false });
 
-          // 첫 줄: 주소 (클릭 시 네이버 길찾기)
           const main = document.createElement("div");
           main.className = "mobile-house-main";
-          const addr = h.normAddress || h.rawAddress || "";
-          const navUrl = makeNaverDirectionUrl(h);
-          if (addr && navUrl) {
-            const aAddr = document.createElement("a");
-            aAddr.href = navUrl;
-            aAddr.target = "_blank";
-            aAddr.rel = "noopener noreferrer";
-            aAddr.textContent = addr;
-            aAddr.style.textDecoration = "none";
-            aAddr.style.color = "inherit";
-            aAddr.addEventListener("click", (e) => e.stopPropagation());
-            main.appendChild(aAddr);
-          } else {
-            main.textContent = addr;
-          }
+          const ord = getDisplayOrder(h);
+          main.textContent = `${ord != null ? "[" + ord + "] " : ""}${
+            h.normAddress || h.rawAddress
+          }`;
           item.appendChild(main);
 
-          // 두 번째 줄: 대표 상품명
           const rep = document.createElement("div");
           rep.className = "mobile-house-rep";
-
-          let repName = h.representLabel || "";
-          if (h.sets && h.sets.length > 0 && h.sets[0].representName) {
-            repName = h.sets[0].representName;
-          }
-          rep.textContent = repName || "(상품명 없음)";
+          rep.textContent = h.representLabel;
           item.appendChild(rep);
 
-          // 세 번째 줄: 주문번호, 운송장, 세트/부품/CBM
           const sub = document.createElement("div");
           sub.className = "mobile-house-sub";
-          const parts = [];
-          if (h.orderNo) parts.push(`주문번호: ${h.orderNo}`);
-          if (h.waybill) parts.push(`운송장: ${h.waybill}`);
-          parts.push(
-            `${formatSetPartSummary(
-              h.totalSets,
-              h.totalParts
-            )} · 부품 ${h.totalParts}개 · CBM ${h.cbmSum.toFixed(CBM_PRECISION)}`
-          );
-          sub.textContent = parts.join(" · ");
+          sub.textContent = `${formatSetPartSummary(
+            h.totalSets,
+            h.totalParts
+          )} · CBM ${h.cbmSum.toFixed(CBM_PRECISION)}`;
           item.appendChild(sub);
 
-          // 상세 부품 영역 (토글)
-          const detail = document.createElement("div");
-          detail.className = "mobile-house-detail";
-          detail.style.display = "none";
-          if (h.sets && h.sets.length > 0) {
-            const ul = document.createElement("ul");
-            ul.className = "mobile-detail-list";
-            h.sets.forEach((s) => {
-              const li = document.createElement("li");
-              li.textContent = `${s.representName || "(세트)"} · 부품 ${
-                s.skuCount
-              }개`;
-              ul.appendChild(li);
-            });
-            detail.appendChild(ul);
-          }
-          item.appendChild(detail);
-
-          // 하단: 아이콘 버튼들 + 지역 표시
           const bottom = document.createElement("div");
           bottom.className = "mobile-house-bottom";
-
-          const iconWrap = document.createElement("div");
-          iconWrap.className = "mobile-icon-buttons";
-
-          // 전화 아이콘
+          const left = document.createElement("span");
           if (h.phone) {
-            const btnPhone = document.createElement("button");
-            btnPhone.type = "button";
-            btnPhone.className = "mobile-icon-btn";
-            btnPhone.title = "전화 걸기";
-            btnPhone.innerHTML = "📞";
-            btnPhone.addEventListener("click", (e) => {
-              e.stopPropagation();
-              const href = formatTelHref(h.phone);
-              if (href) window.location.href = href;
-            });
-            iconWrap.appendChild(btnPhone);
+            const a = document.createElement("a");
+            a.href = formatTelHref(h.phone);
+            a.className = "mobile-phone-link";
+            a.textContent = h.phone;
+            left.appendChild(a);
           }
 
-          // 상품 링크 아이콘
-          let repUrl = null;
-          if (h.sets && h.sets.length > 0) {
-            const firstSet = h.sets[0];
-            if (firstSet.vendorId) {
-              repUrl = makeCoupangUrlFromVendor(firstSet.vendorId);
-            }
-          }
-          if (repUrl) {
-            const btnProd = document.createElement("a");
-            btnProd.href = repUrl;
-            btnProd.target = "_blank";
-            btnProd.rel = "noopener noreferrer";
-            btnProd.className = "mobile-icon-btn";
-            btnProd.title = "상품 페이지 열기";
-            btnProd.innerHTML = "🛒";
-            btnProd.addEventListener("click", (e) => e.stopPropagation());
-            iconWrap.appendChild(btnProd);
+          // 모바일용 네비게이션 아이콘 (출발지 → 해당 주소)
+          const navUrl = makeNavUrl(h);
+          if (navUrl) {
+            const nav = document.createElement("a");
+            nav.href = navUrl;
+            nav.target = "_blank";
+            nav.rel = "noopener noreferrer";
+            nav.className = "mobile-nav-link";
+            nav.style.marginLeft = h.phone ? "10px" : "0";
+            nav.textContent = "🚗";
+            left.appendChild(nav);
           }
 
-          // 상세 부품 아이콘
-          const btnDetail = document.createElement("button");
-          btnDetail.type = "button";
-          btnDetail.className = "mobile-icon-btn";
-          btnDetail.title = "상세 부품 보기";
-          btnDetail.innerHTML = "📦";
-          btnDetail.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const visible = detail.style.display !== "none";
-            detail.style.display = visible ? "none" : "block";
-          });
-          iconWrap.appendChild(btnDetail);
-
-          bottom.appendChild(iconWrap);
+          bottom.appendChild(left);
 
           const right = document.createElement("span");
-          let cityLabel = "";
-          if (h.city === "PYEONGTAEK") cityLabel = "PYEONGTAEK";
-          else if (h.city === "HWASEONG") cityLabel = "HWASEONG";
-          else if (h.city === "ANSEONG") cityLabel = "ANSEONG";
-          else if (h.city && typeof h.city === "string") cityLabel = h.city;
-          if (cityLabel) {
-            right.textContent = h.isOutskirts
-              ? `${cityLabel} (외곽)`
-              : cityLabel;
-          } else {
-            right.textContent = `부품 ${h.totalParts}개`;
-          }
+          right.textContent = `${h.city}${h.isOutskirts ? " (외곽)" : ""}`;
           bottom.appendChild(right);
 
           item.appendChild(bottom);
-
-          item.addEventListener("click", () => {
-            focusHousehold(h.id, { fromList: true, openDetail: false });
-          });
-
           list.appendChild(item);
         });
+      }
 
-        // 선택된 항목이 있으면 스크롤로 중앙에 맞추기
-        const active = list.querySelector(".mobile-house-item.active");
-        if (active) {
-          active.scrollIntoView({ behavior: "smooth", block: "center" });
+      /* ===== 포커스 제어 ===== */
+      function focusGroup(groupId) {
+        uiState.focusedGroupId = groupId;
+        const g = groups.find((gg) => gg.id === groupId);
+        if (g && g.memberIds.length > 0) {
+          focusHousehold(g.memberIds[0], { fromGroup: true, openDetail: true });
+        } else {
+          uiState.focusedHouseholdId = null;
+          renderGroupSummary();
+          renderGroupList();
+          renderMobileList();
+          updateMarkerAppearance();
         }
       }
-function focusHousehold(houseId, opts) {
+
+      function focusHousehold(houseId, opts) {
         const options = opts || {};
         const h = households.find((x) => x.id === houseId);
         if (!h) return;
@@ -2092,19 +1853,11 @@ function focusHousehold(houseId, opts) {
 
         ensureMap();
         if (h.lat != null && h.lng != null) {
-          let latlng = new naver.maps.LatLng(h.lat, h.lng);
-          if (isMobileMode) {
-            // 모바일에서는 하단 패널 때문에 마커가 가려지지 않도록
-            // 약간 위쪽으로 올려서 센터를 맞춰준다.
-            const offsetLat = 0.01;
-            latlng = new naver.maps.LatLng(h.lat + offsetLat, h.lng);
-          }
+          const latlng = new naver.maps.LatLng(h.lat, h.lng);
           map.panTo(latlng);
-          if (!isMobileMode) {
-            const html = makeInfoCardHTML(h);
-            infoWindow.setContent(html);
-            infoWindow.open(map, latlng);
-          }
+          const html = makeInfoCardHTML(h);
+          infoWindow.setContent(html);
+          infoWindow.open(map, latlng);
         }
 
         if (!isMobileMode && options.openDetail) {
@@ -2119,8 +1872,7 @@ function focusHousehold(houseId, opts) {
         updateMarkerAppearance();
       }
 
-
-/* ===== 모바일 하단 패널 드래그 ===== */
+      /* ===== 모바일 하단 패널 드래그 ===== */
       function setupMobilePanelDrag() {
         const panel = document.getElementById("mobile-panel");
         const handle = document.getElementById("mobile-handle");

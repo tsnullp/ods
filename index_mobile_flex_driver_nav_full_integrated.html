@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>기사 전용 배달 지도 (쿠팡 플렉스 스타일)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- NAVER 지도 -->
+    <script
+      type="text/javascript"
+      src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=ms2yp98bvf&submodules=geocoder"
+    ></script>
+
+    <!-- Excel 읽기 -->
+    <script src="https://unpkg.com/read-excel-file@5.7.1/bundle/read-excel-file.min.js"></script>
+
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #f3f4f6;
+        color: #111827;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        padding: 8px 12px;
+        background: #111827;
+        color: #f9fafb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+      }
+      header .title-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 700;
+      }
+      header .file-name {
+        font-size: 11px;
+        color: #e5e7eb;
+        max-width: 50%;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        text-align: right;
+      }
+
+      #app {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* 상단 지도, 하단 리스트 분할 (쿠팡 플렉스 비슷한 구조) */
+      #map-wrapper {
+        position: relative;
+        flex: 1 1 auto;
+        min-height: 40%;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+
+      #list-wrapper {
+        flex: 1 1 auto;
+        min-height: 45%;
+        max-height: 60%;
+        background: #ffffff;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.25);
+        display: flex;
+        flex-direction: column;
+      }
+
+      #list-handle {
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: ns-resize;
+      }
+      #list-handle::after {
+        content: "";
+        width: 42px;
+        height: 4px;
+        border-radius: 999px;
+        background: #d1d5db;
+      }
+
+      #list-header {
+        padding: 4px 14px 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: #4b5563;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      #summary-counts {
+        display: flex;
+        gap: 8px;
+      }
+      #summary-counts span {
+        background: #f3f4f6;
+        padding: 3px 6px;
+        border-radius: 999px;
+      }
+
+      #list {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        padding: 6px 10px 10px;
+        background: #f9fafb;
+      }
+
+      .house-card {
+        background: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        padding: 10px 10px 8px;
+        margin-bottom: 8px;
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+        cursor: pointer;
+      }
+      .house-card.active {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 1px #2563eb;
+      }
+
+      .house-top-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+      }
+      .house-main-title {
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .house-main-badge {
+        font-size: 11px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        padding: 2px 6px;
+        border-radius: 999px;
+      }
+
+      .house-sub-line {
+        font-size: 11px;
+        color: #4b5563;
+      }
+
+      .house-addr {
+        font-size: 11px;
+        color: #374151;
+      }
+
+      .house-memo {
+        margin-top: 2px;
+        padding: 6px 8px;
+        font-size: 11px;
+        color: #b91c1c;
+        background: #fef2f2;
+        border-radius: 6px;
+        line-height: 1.4;
+      }
+
+      .icon-row {
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .icon-btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #f3f4f6;
+        color: #111827;
+        cursor: pointer;
+      }
+      .icon-btn span {
+        font-size: 13px;
+      }
+      .icon-btn.primary {
+        background: #2563eb;
+        color: #ffffff;
+      }
+      .icon-btn.warn {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .icon-btn.disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      .parts-list {
+        margin-top: 6px;
+        border-top: 1px dashed #e5e7eb;
+        padding-top: 4px;
+        font-size: 11px;
+      }
+      .parts-list-title {
+        font-weight: 600;
+        color: #4b5563;
+        margin-bottom: 2px;
+      }
+      .parts-list ul {
+        padding-left: 16px;
+        margin: 0;
+      }
+      .parts-list li {
+        margin-bottom: 1px;
+      }
+
+      footer {
+        padding: 6px 10px;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid #e5e7eb;
+        background: #f9fafb;
+      }
+      label.upload-btn {
+        background: #2563eb;
+        color: #ffffff;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #fileInput {
+        display: none;
+      }
+      #log {
+        color: #6b7280;
+        max-width: 180px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* 네비게이션 바텀시트 */
+      #nav-sheet-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.35);
+        display: none;
+        z-index: 30;
+      }
+      #nav-sheet-overlay.open {
+        display: block;
+      }
+      #nav-sheet {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #ffffff;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -6px 20px rgba(15, 23, 42, 0.3);
+        padding: 12px 16px 16px;
+        transform: translateY(100%);
+        transition: transform 0.2s ease-out;
+        z-index: 40;
+        font-size: 13px;
+      }
+      #nav-sheet.open {
+        transform: translateY(0);
+      }
+      .nav-sheet-title {
+        font-size: 15px;
+        font-weight: 700;
+        margin-bottom: 3px;
+      }
+      .nav-sheet-sub {
+        font-size: 11px;
+        color: #6b7280;
+        margin-bottom: 8px;
+      }
+      .nav-sheet-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .nav-sheet-buttons button {
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        padding: 8px 10px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: #f9fafb;
+      }
+      .nav-sheet-buttons button.primary {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #ffffff;
+      }
+      #btn-nav-close {
+        width: 100%;
+        padding: 7px 0;
+        font-size: 13px;
+        border-radius: 10px;
+        border: 0;
+        background: #e5e7eb;
+      }
+
+      /* 마커용 공통 */
+      .hidden {
+        display: none !important;
+      }
+
+      @media (min-width: 769px) {
+        /* PC에서도 쓸 수 있게 좌우 분할 옵션 (필요하면) */
+        #app {
+          flex-direction: row;
+        }
+        #map-wrapper {
+          flex: 1.2;
+        }
+        #list-wrapper {
+          flex: 1;
+          max-height: none;
+          border-radius: 0;
+          box-shadow: none;
+          border-left: 1px solid #e5e7eb;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="title-left">
+        <span>🚚</span>
+        <span>기사 전용 배차 뷰 (모바일)</span>
+      </div>
+      <div id="fileName" class="file-name">엑셀을 선택하세요</div>
+    </header>
+
+    <div id="app">
+      <div id="map-wrapper">
+        <div id="map"></div>
+      </div>
+
+      <div id="list-wrapper">
+        <div id="list-handle"></div>
+        <div id="list-header">
+          <div id="summary-counts">
+            <span id="summary-houses">가구 0</span>
+            <span id="summary-parts">품목 0</span>
+            <span id="summary-cbm">CBM 0</span>
+          </div>
+          <div id="summary-extra"></div>
+        </div>
+        <div id="list"></div>
+      </div>
+    </div>
+
+    <footer>
+      <div style="display: flex; align-items: center; gap: 8px">
+        <label for="fileInput" class="upload-btn">엑셀 불러오기</label>
+        <input id="fileInput" type="file" accept=".xlsx,.xls" />
+        <span id="log"></span>
+      </div>
+      <div style="font-size: 10px; color: #6b7280">
+        CBM 0인 주소는 자동 제외 · 메모 있는 집은 마커 주황색
+      </div>
+    </footer>
+
+    <!-- 네비게이션 선택 바텀시트 -->
+    <div id="nav-sheet-overlay"></div>
+    <div id="nav-sheet">
+      <div class="nav-sheet-title">네비게이션 선택</div>
+      <div id="nav-sheet-dest" class="nav-sheet-sub">
+        목적지 정보를 불러오는 중...
+      </div>
+      <div class="nav-sheet-buttons">
+        <button id="btn-nav-naver-route" class="primary">
+          🚗 네이버 지도 길찾기
+        </button>
+        <button id="btn-nav-naver-place">📍 네이버 지도 장소 페이지</button>
+        <button id="btn-nav-kakao">🟡 카카오맵 길찾기</button>
+        <button id="btn-nav-tmap">🔵 티맵 길찾기</button>
+      </div>
+      <button id="btn-nav-close">닫기</button>
+    </div>
+
+    <script>
+      // ===== 전역 상태 =====
+      const START_POINT_LAT = 37.158135; // 출발지 (평택 기준 사용 예시)
+      const START_POINT_LNG = 127.103159;
+
+      let map = null;
+      let households = [];
+      let markersById = new Map();
+      let uiState = {
+        focusedHouseholdId: null,
+      };
+      let navTarget = null;
+
+      const COL_INDEX_FALLBACK = {
+        addr: 13, // 주소
+        phone: 11,
+        cbm: 10,
+        orderNo: 4, // 5번째 컬럼
+        invoiceNo: 5, // 6번째 컬럼
+        product: 9,
+        vendor: 6,
+        memoFixed: 18, // 19번째 컬럼 (0-based)
+      };
+
+      function logInfo(msg) {
+        const el = document.getElementById("log");
+        if (el) el.textContent = msg;
+        console.log("[INFO]", msg);
+      }
+      function logError(msg, err) {
+        const el = document.getElementById("log");
+        if (el) el.textContent = "⚠ " + msg;
+        console.error("[ERROR]", msg, err || "");
+      }
+
+      function normalizeAddress(raw) {
+        if (!raw) return "";
+        return String(raw)
+          .replace(/대한민국|Republic of Korea/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function isMobileWidth() {
+        return window.innerWidth <= 768;
+      }
+
+      // ===== 지도 초기화 =====
+      function ensureMap() {
+        if (map) return;
+        map = new naver.maps.Map("map", {
+          center: new naver.maps.LatLng(START_POINT_LAT, START_POINT_LNG),
+          zoom: 11,
+        });
+
+        new naver.maps.Marker({
+          position: new naver.maps.LatLng(START_POINT_LAT, START_POINT_LNG),
+          map,
+          title: "출발지",
+        });
+      }
+
+      function fitMapToAll() {
+        if (!map) return;
+        const coords = households.filter((h) => h.lat != null && h.lng != null);
+        if (!coords.length) return;
+        const bounds = new naver.maps.LatLngBounds();
+        coords.forEach((h) =>
+          bounds.extend(new naver.maps.LatLng(h.lat, h.lng))
+        );
+        map.fitBounds(bounds);
+      }
+
+      // ===== 마커 아이콘 (메모 있는 집은 주황색) =====
+      function makeMarkerIcon(h, index, isActive) {
+        const mobile = isMobileWidth();
+        const radius = mobile ? 18 : 14;
+        const size = radius * 2 + 8;
+
+        const baseColor = h.memo ? "#f97316" : "#2563eb"; // 메모 있는 집 = 주황색
+        const fillColor = isActive ? "#ffffff" : baseColor;
+        const strokeColor = isActive ? baseColor : "#ffffff";
+        const textColor = isActive ? baseColor : "#ffffff";
+
+        const num = index != null ? String(index + 1) : "";
+
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" flood-color="rgba(15,23,42,0.45)" />
+    </filter>
+  </defs>
+  <circle cx="${size / 2}" cy="${
+          size / 2
+        }" r="${radius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="3" filter="url(#shadow)"/>
+  <!-- 터치영역 확대용 투명원 -->
+  <circle cx="${size / 2}" cy="${size / 2}" r="${
+          radius + 6
+        }" fill="transparent" />
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="${
+    mobile ? 14 : 12
+  }" font-weight="700" fill="${textColor}">${num}</text>
+</svg>`;
+
+        return {
+          url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
+          size: new naver.maps.Size(size, size),
+          anchor: new naver.maps.Point(size / 2, size / 2),
+        };
+      }
+
+      // ===== 네비게이션 연동 =====
+      function openNavSheetForHouse(h) {
+        if (!h || h.lat == null || h.lng == null) {
+          alert("좌표가 없는 주소입니다.");
+          return;
+        }
+        navTarget = h;
+        const sub = document.getElementById("nav-sheet-dest");
+        if (sub) {
+          const addr = h.rawAddress || h.normAddress || "";
+          const title = h.representName || "";
+          if (addr && title) sub.textContent = `${title} · ${addr}`;
+          else if (addr) sub.textContent = addr;
+          else sub.textContent = `위도 ${h.lat}, 경도 ${h.lng}`;
+        }
+        document.getElementById("nav-sheet-overlay").classList.add("open");
+        document.getElementById("nav-sheet").classList.add("open");
+      }
+
+      function closeNavSheet() {
+        navTarget = null;
+        document.getElementById("nav-sheet-overlay").classList.remove("open");
+        document.getElementById("nav-sheet").classList.remove("open");
+      }
+
+      function openNavIfTarget(builder) {
+        if (!navTarget || navTarget.lat == null || navTarget.lng == null) {
+          alert("목적지 좌표가 없습니다.");
+          return;
+        }
+        const url = builder(navTarget);
+        if (url) {
+          window.location.href = url;
+        }
+      }
+
+      function buildNaverRouteUrl(h) {
+        const dname = encodeURIComponent(
+          h.representName || h.rawAddress || "배송지"
+        );
+        return (
+          "nmap://route/car?" +
+          "slat=" +
+          START_POINT_LAT +
+          "&slng=" +
+          START_POINT_LNG +
+          "&sname=" +
+          encodeURIComponent("출발지") +
+          "&dlat=" +
+          h.lat +
+          "&dlng=" +
+          h.lng +
+          "&dname=" +
+          dname +
+          "&appname=com.order.dispatch"
+        );
+      }
+
+      function buildNaverPlaceUrl(h) {
+        const name = encodeURIComponent(
+          h.representName || h.rawAddress || "배송지"
+        );
+        return (
+          "nmap://place?" +
+          "lat=" +
+          h.lat +
+          "&lng=" +
+          h.lng +
+          "&name=" +
+          name +
+          "&appname=com.order.dispatch"
+        );
+      }
+
+      function buildKakaoRouteUrl(h) {
+        return (
+          "kakaomap://route?" +
+          "sp=" +
+          START_POINT_LAT +
+          "," +
+          START_POINT_LNG +
+          "&ep=" +
+          h.lat +
+          "," +
+          h.lng +
+          "&by=CAR"
+        );
+      }
+
+      function buildTmapRouteUrl(h) {
+        return (
+          "tmap://route?" + "goalx=" + h.lng + "&goaly=" + h.lat + "&by=CAR"
+        );
+      }
+
+      // ===== 파일 처리 & household 빌드 =====
+      async function handleFile(file) {
+        try {
+          logInfo("엑셀 읽는 중...");
+          const rows = await readXlsxFile(file);
+          if (!rows || rows.length === 0) {
+            logError("엑셀에 데이터가 없습니다.");
+            return;
+          }
+          document.getElementById("fileName").textContent = file.name;
+
+          // 헤더 감지
+          const firstRow = rows[0].map((c) =>
+            c == null ? "" : String(c).trim()
+          );
+          const headerKeys = ["주소", "address", "cbm", "전화", "phone"];
+          const hasHeader = firstRow.some((cell) =>
+            headerKeys.some((key) =>
+              cell.toLowerCase().includes(key.toLowerCase())
+            )
+          );
+
+          let dataRows;
+          let headers;
+          if (hasHeader) {
+            headers = firstRow;
+            dataRows = rows.slice(1);
+          } else {
+            headers = firstRow.map((_, i) => "COL" + (i + 1));
+            dataRows = rows; // 첫 줄도 데이터로 사용
+          }
+
+          // 헤더 기반 인덱스 찾기
+          function findIdx(names, fallback) {
+            const lower = headers.map((h) => String(h).trim().toLowerCase());
+            for (const n of names) {
+              const idx = lower.indexOf(String(n).toLowerCase());
+              if (idx !== -1) return idx;
+            }
+            return fallback;
+          }
+
+          const idxAddr = findIdx(["주소", "address"], COL_INDEX_FALLBACK.addr);
+          const idxPhone = findIdx(
+            ["전화", "전화번호", "phone", "tel"],
+            COL_INDEX_FALLBACK.phone
+          );
+          const idxCBM = findIdx(["cbm"], COL_INDEX_FALLBACK.cbm);
+          const idxOrder = findIdx(
+            ["주문번호", "orderno", "order no"],
+            COL_INDEX_FALLBACK.orderNo
+          );
+          const idxInvoice = findIdx(
+            ["운송장번호", "invoice", "송장번호"],
+            COL_INDEX_FALLBACK.invoiceNo
+          );
+          const idxProduct = findIdx(
+            ["상품명", "product", "sku name"],
+            COL_INDEX_FALLBACK.product
+          );
+          const idxVendor = findIdx(
+            ["vendoritemid", "vendor item id"],
+            COL_INDEX_FALLBACK.vendor
+          );
+          const idxMemo = findIdx(
+            ["메모", "요청사항", "요청", "memo", "note"],
+            COL_INDEX_FALLBACK.memoFixed
+          );
+
+          // 주소 단위로 묶기
+          const mapByAddr = new Map();
+          let totalParts = 0;
+          let totalCBM = 0;
+
+          for (let rIdx = 0; rIdx < dataRows.length; rIdx++) {
+            const row = dataRows[rIdx];
+            const addrRaw = row[idxAddr];
+            const addrNorm = normalizeAddress(addrRaw);
+            if (!addrNorm) continue;
+
+            // CBM 0은 제외
+            let cbmVal = null;
+            if (idxCBM != null && idxCBM < row.length) {
+              const v = parseFloat(row[idxCBM]);
+              if (!isNaN(v)) cbmVal = v;
+            }
+            if (cbmVal !== null && cbmVal <= 0) continue;
+
+            const key = addrNorm;
+            if (!mapByAddr.has(key)) {
+              mapByAddr.set(key, {
+                id: null,
+                rawAddress: addrRaw || addrNorm,
+                normAddress: addrNorm,
+                rows: [],
+                phone: null,
+                orderNo: null,
+                invoiceNo: null,
+                representName: "",
+                memo: null,
+                lat: null,
+                lng: null,
+                cbmSum: 0,
+              });
+            }
+            const h = mapByAddr.get(key);
+            h.rows.push(row);
+
+            if (!h.phone && idxPhone < row.length) {
+              const ph = row[idxPhone];
+              if (ph) h.phone = String(ph);
+            }
+            if (!h.orderNo && idxOrder < row.length) {
+              const o = row[idxOrder];
+              if (o) h.orderNo = String(o);
+            }
+            if (!h.invoiceNo && idxInvoice < row.length) {
+              const inv = row[idxInvoice];
+              if (inv) h.invoiceNo = String(inv);
+            }
+            if (idxProduct < row.length) {
+              const p = row[idxProduct];
+              if (p && !h.representName) h.representName = String(p);
+            }
+            if (!h.memo && idxMemo < row.length) {
+              const m = row[idxMemo];
+              if (m) h.memo = String(m).trim();
+            }
+            if (cbmVal !== null) {
+              h.cbmSum += cbmVal;
+              totalCBM += cbmVal;
+            }
+            totalParts++;
+          }
+
+          households = Array.from(mapByAddr.values());
+          households.forEach((h, i) => (h.id = i));
+
+          logInfo("지오코딩 중...");
+          await geocodeAllHouseholds();
+
+          logInfo("지도/리스트 렌더링...");
+          renderAll({ totalParts, totalCBM });
+          logInfo("완료");
+        } catch (e) {
+          logError("엑셀 처리 중 오류", e);
+        }
+      }
+
+      function geocodeAddress(query) {
+        return new Promise((resolve) => {
+          naver.maps.Service.geocode({ query }, (status, response) => {
+            if (status !== naver.maps.Service.Status.OK) {
+              resolve(null);
+            } else {
+              resolve(response);
+            }
+          });
+        });
+      }
+
+      async function geocodeAllHouseholds() {
+        for (let i = 0; i < households.length; i++) {
+          const h = households[i];
+          try {
+            const res = await geocodeAddress(
+              h.normAddress || h.rawAddress || ""
+            );
+            if (
+              res &&
+              res.v2 &&
+              res.v2.addresses &&
+              res.v2.addresses.length > 0
+            ) {
+              const a = res.v2.addresses[0];
+              const lat = parseFloat(a.y);
+              const lng = parseFloat(a.x);
+              if (!isNaN(lat) && !isNaN(lng)) {
+                h.lat = lat;
+                h.lng = lng;
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+          logInfo(`지오코딩... (${i + 1}/${households.length})`);
+        }
+      }
+
+      // ===== 렌더 전체 =====
+      function renderAll(extra) {
+        ensureMap();
+        renderMarkers();
+        renderList(extra);
+        fitMapToAll();
+      }
+
+      // ===== 마커 렌더링 =====
+      function renderMarkers() {
+        markersById.forEach((m) => m.setMap(null));
+        markersById.clear();
+
+        households.forEach((h, idx) => {
+          if (h.lat == null || h.lng == null) return;
+          const marker = new naver.maps.Marker({
+            position: new naver.maps.LatLng(h.lat, h.lng),
+            map,
+            icon: makeMarkerIcon(h, idx, false),
+            title: h.representName || h.rawAddress || "배송지",
+          });
+
+          naver.maps.Event.addListener(marker, "click", () => {
+            focusHousehold(h.id, { fromMarker: true });
+          });
+
+          markersById.set(h.id, marker);
+        });
+      }
+
+      function updateMarkerAppearance() {
+        households.forEach((h, idx) => {
+          const marker = markersById.get(h.id);
+          if (!marker) return;
+          const isActive = uiState.focusedHouseholdId === h.id;
+          marker.setIcon(makeMarkerIcon(h, idx, isActive));
+        });
+      }
+
+      // ===== 리스트 렌더링 =====
+      function renderList(extra) {
+        const listEl = document.getElementById("list");
+        listEl.innerHTML = "";
+
+        // 요약 정보
+        const totalHouses = households.length;
+        const totalParts = extra ? extra.totalParts : 0;
+        const totalCBM = extra ? extra.totalCBM : 0;
+        document.getElementById(
+          "summary-houses"
+        ).textContent = `가구 ${totalHouses}`;
+        document.getElementById(
+          "summary-parts"
+        ).textContent = `품목 ${totalParts}`;
+        document.getElementById(
+          "summary-cbm"
+        ).textContent = `CBM ${totalCBM.toFixed(2)}`;
+
+        households.forEach((h, idx) => {
+          const card = document.createElement("div");
+          card.className = "house-card";
+          card.dataset.houseId = h.id;
+
+          // 상단 정보
+          const topRow = document.createElement("div");
+          topRow.className = "house-top-row";
+
+          const leftWrap = document.createElement("div");
+          const title = document.createElement("div");
+          title.className = "house-main-title";
+          title.textContent = h.representName || "(상품명 없음)".concat("");
+
+          const addr = document.createElement("div");
+          addr.className = "house-addr";
+          addr.textContent = h.rawAddress || h.normAddress || "";
+
+          leftWrap.appendChild(title);
+          leftWrap.appendChild(addr);
+
+          const badge = document.createElement("div");
+          badge.className = "house-main-badge";
+          badge.textContent = `#${idx + 1} · 품목 ${h.rows.length}개`;
+
+          topRow.appendChild(leftWrap);
+          topRow.appendChild(badge);
+          card.appendChild(topRow);
+
+          // 주문/운송장 라인
+          const subLine = document.createElement("div");
+          subLine.className = "house-sub-line";
+          const orderStr = h.orderNo ? `주문번호 ${h.orderNo}` : "";
+          const invStr = h.invoiceNo ? ` / 운송장 ${h.invoiceNo}` : "";
+          subLine.textContent =
+            orderStr || invStr ? orderStr + invStr : "주문/운송장 정보 없음";
+          card.appendChild(subLine);
+
+          // 메모 (있으면 표시)
+          if (h.memo) {
+            const memoEl = document.createElement("div");
+            memoEl.className = "house-memo";
+            memoEl.textContent = h.memo;
+            card.appendChild(memoEl);
+          }
+
+          // 아이콘 row
+          const iconRow = document.createElement("div");
+          iconRow.className = "icon-row";
+
+          // 전화 아이콘
+          const phoneBtn = document.createElement("button");
+          phoneBtn.className = "icon-btn";
+          phoneBtn.innerHTML = "<span>📞</span><span>전화</span>";
+          if (!h.phone) {
+            phoneBtn.classList.add("disabled");
+          } else {
+            phoneBtn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const tel = String(h.phone).replace(/[^\d+]/g, "");
+              if (!tel) return;
+              window.location.href = "tel:" + tel;
+            });
+          }
+          iconRow.appendChild(phoneBtn);
+
+          // 네비 아이콘
+          const navBtn = document.createElement("button");
+          navBtn.className = "icon-btn primary";
+          navBtn.innerHTML = "<span>📍</span><span>네비</span>";
+          if (h.lat == null || h.lng == null) {
+            navBtn.classList.add("disabled");
+          } else {
+            navBtn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              openNavSheetForHouse(h);
+            });
+          }
+          iconRow.appendChild(navBtn);
+
+          // 상품 링크 아이콘 (vendorItemId 있는 경우)
+          const productBtn = document.createElement("button");
+          productBtn.className = "icon-btn";
+          productBtn.innerHTML = "<span>🛒</span><span>상품</span>";
+          let vendorId = null;
+          if (h.rows.length > 0 && h.rows[0].length > 0) {
+            // 간단히 첫 행에서 vendor 추출
+            const firstRow = h.rows[0];
+            // vendor 컬럼 인덱스는 알 수 없으므로, 위에서 idxVendor 따로 관리해도 됨
+          }
+          // 여기서는 간단히 없는 것으로 처리 (원하면 vendorId 연결 가능)
+          productBtn.classList.add("disabled");
+          iconRow.appendChild(productBtn);
+
+          // 상세 아이콘
+          const detailBtn = document.createElement("button");
+          detailBtn.className = "icon-btn";
+          detailBtn.innerHTML = "<span>📦</span><span>상세</span>";
+          iconRow.appendChild(detailBtn);
+
+          card.appendChild(iconRow);
+
+          // 상세 파츠 영역
+          const partsWrap = document.createElement("div");
+          partsWrap.className = "parts-list hidden";
+
+          const partsTitle = document.createElement("div");
+          partsTitle.className = "parts-list-title";
+          partsTitle.textContent = "품목 상세";
+          partsWrap.appendChild(partsTitle);
+
+          const ul = document.createElement("ul");
+          h.rows.forEach((row) => {
+            const li = document.createElement("li");
+            li.textContent = row[COL_INDEX_FALLBACK.product] || "품목";
+            ul.appendChild(li);
+          });
+          partsWrap.appendChild(ul);
+          card.appendChild(partsWrap);
+
+          detailBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            partsWrap.classList.toggle("hidden");
+          });
+
+          // 카드 클릭 → 포커스 + 지도 이동
+          card.addEventListener("click", () => {
+            focusHousehold(h.id, { fromList: true });
+          });
+
+          listEl.appendChild(card);
+        });
+
+        updateCardActiveState();
+      }
+
+      function updateCardActiveState() {
+        const cards = document.querySelectorAll(".house-card");
+        cards.forEach((c) => {
+          const id = Number(c.dataset.houseId);
+          if (uiState.focusedHouseholdId === id) c.classList.add("active");
+          else c.classList.remove("active");
+        });
+      }
+
+      // ===== 포커스 & 동기화 =====
+      function focusHousehold(houseId, options) {
+        const opt = options || {};
+        const h = households.find((x) => x.id === houseId);
+        if (!h) return;
+
+        uiState.focusedHouseholdId = houseId;
+        updateCardActiveState();
+        updateMarkerAppearance();
+
+        if (h.lat != null && h.lng != null && map) {
+          const pos = new naver.maps.LatLng(h.lat, h.lng);
+          map.setCenter(pos);
+          if (isMobileWidth()) {
+            map.setZoom(15);
+          }
+        }
+
+        // 리스트에서 해당 카드로 스크롤
+        const listEl = document.getElementById("list");
+        const card = listEl.querySelector(
+          `.house-card[data-house-id="${houseId}"]`
+        );
+        if (card && opt.fromMarker) {
+          const top = card.offsetTop - 10;
+          listEl.scrollTo({ top, behavior: "smooth" });
+        }
+      }
+
+      // ===== 초기화 =====
+      window.addEventListener("load", () => {
+        ensureMap();
+
+        const fileInput = document.getElementById("fileInput");
+        fileInput.addEventListener("change", (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            handleFile(file);
+          }
+        });
+
+        // 네비 시트 바깥 클릭/닫기
+        const ov = document.getElementById("nav-sheet-overlay");
+        ov.addEventListener("click", closeNavSheet);
+        const btnClose = document.getElementById("btn-nav-close");
+        btnClose.addEventListener("click", closeNavSheet);
+
+        document
+          .getElementById("btn-nav-naver-route")
+          .addEventListener("click", () => openNavIfTarget(buildNaverRouteUrl));
+        document
+          .getElementById("btn-nav-naver-place")
+          .addEventListener("click", () => openNavIfTarget(buildNaverPlaceUrl));
+        document
+          .getElementById("btn-nav-kakao")
+          .addEventListener("click", () => openNavIfTarget(buildKakaoRouteUrl));
+        document
+          .getElementById("btn-nav-tmap")
+          .addEventListener("click", () => openNavIfTarget(buildTmapRouteUrl));
+
+        logInfo("엑셀을 불러오세요.");
+      });
+    </script>
+  </body>
+</html>
