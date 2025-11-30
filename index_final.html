@@ -171,7 +171,7 @@
 
       .icons {
         display: flex;
-        gap: 14px; /* 아이콘 터치 영역 넓게 */
+        gap: 14px; /* 터치 넉넉하게 */
         flex-wrap: wrap;
         margin-top: 6px;
       }
@@ -313,6 +313,7 @@
       </div>
     </footer>
 
+    <!-- 네비 바텀시트 -->
     <div id="overlay"></div>
     <div id="sheet">
       <div id="sheetTitle" style="font-weight: 700; margin-bottom: 6px">
@@ -365,8 +366,9 @@
         });
       }
 
+      // 메모 있는 집은 주황, 나머지는 파랑
       function markerIcon(h, index, active) {
-        const r = 18;
+        const r = 20; // 모바일 터치 고려 조금 키움
         const size = r * 2 + 8;
         const isMemo = !!h.memo;
 
@@ -625,6 +627,7 @@
       window.copyCodes = copyCodes;
       window.toggleParts = toggleParts;
       window.openNavSheet = openNavSheet;
+      window.focusHome = focusHome;
 
       document.getElementById("file").addEventListener("change", async (e) => {
         const file = e.target.files[0];
@@ -639,24 +642,29 @@
             return;
           }
 
-          const dataRows = rows.slice(1); // 1행: 헤더
-
+          const dataRows = rows;
           const mapByAddr = new Map();
           let idSeq = 0;
 
           dataRows.forEach((r) => {
-            const addr = r[13]; // 주소 (14번째 열)
+            const addrRaw = r[13]; // 주소 원본 (14번째 열)
+            const addr =
+              addrRaw == null
+                ? ""
+                : String(addrRaw).replace(/\s+/g, " ").trim();
             if (!addr) return;
 
             const phone = r[11]; // 전화번호 (12번째 열)
             const orderNo = r[4]; // 주문번호 (5번째 열)
             const invoice = r[5]; // 운송장번호 (6번째 열)
             const skuName = r[9]; // SKU명 (10번째 열, 대표 상품명)
-            const cbm = parseFloat(r[10]) || 0; // 11번째 열
+            const cbm = parseFloat(r[10]) || 0; // CBM (11번째 열)
             const memo = r[18]; // 메모(19번째 열)
-            const productLink =
-              "https://www.coupang.com/np/search?q=" +
-              encodeURIComponent(skuName || "");
+            const itemId = r[6]; // 예: 7번째 열에 itemId가 있다고 가정
+            const productLink = itemId
+              ? "https://www.coupang.com/vp/products/8239520807?vendorItemId=" +
+                encodeURIComponent(String(itemId))
+              : "";
 
             if (!mapByAddr.has(addr)) {
               mapByAddr.set(addr, {
