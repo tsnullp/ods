@@ -928,9 +928,10 @@
             const skuName = r[9]; // SKU명 (10번째 열, 대표 상품명)
             const cbm = parseFloat(r[10]) || 0; // 11번째 열
             const memo = r[18]; // 메모(19번째 열)
-            const productLink =
-              "https://www.coupang.com/np/search?q=" +
-              encodeURIComponent(skuName || "");
+            const itemId = r[6]; // 7번째 열
+            const productLink = itemId
+              ? `https://www.coupang.com/vp/products/5606756170?itemId=${itemId}`
+              : "";
 
             if (!mapByAddr.has(addr)) {
               mapByAddr.set(addr, {
