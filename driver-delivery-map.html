@@ -53,16 +53,17 @@
         text-align: right;
       }
 
+      /* ✅ 전체 영역: 위=지도, 아래=리스트 2행 그리드 */
       #app {
         flex: 1;
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-rows: 52% 48%; /* 기본 비율 */
         min-height: 0;
       }
 
+      /* ✅ 그리드 안에서 각 행이 자기 칸을 꽉 채우도록 */
       #mapWrap {
-        flex: 1;
-        min-height: 42%;
+        min-height: 0;
       }
 
       #map {
@@ -76,8 +77,8 @@
         box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.25);
         display: flex;
         flex-direction: column;
-        min-height: 45%;
-        max-height: 60%;
+        min-height: 0;
+        max-height: none;
       }
 
       #handle {
@@ -85,6 +86,8 @@
         display: flex;
         justify-content: center;
         align-items: center;
+        cursor: ns-resize;
+        touch-action: none;
       }
       #handle::after {
         content: "";
@@ -171,7 +174,7 @@
 
       .icons {
         display: flex;
-        gap: 14px; /* 터치 넉넉하게 */
+        gap: 14px; /* 아이콘 터치 영역 넓게 */
         flex-wrap: wrap;
         margin-top: 6px;
       }
@@ -204,6 +207,32 @@
       }
       .parts.hidden {
         display: none;
+      }
+
+      /* ✅ 운송장/주문번호 + 끝 4자리 강조 */
+      .codes {
+        margin-bottom: 4px;
+      }
+      .code-line {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        cursor: pointer;
+        margin-bottom: 2px;
+      }
+      .code-label {
+        font-size: 11px;
+        color: #6b7280;
+        min-width: 60px;
+      }
+      .code-main {
+        font-size: 11px;
+        color: #111827;
+      }
+      .code-last4 {
+        font-size: 14px;
+        font-weight: 700;
+        color: #111827;
       }
 
       footer {
@@ -280,6 +309,26 @@
         color: #ffffff;
         border-color: #2563eb;
       }
+
+      /* 토스트 */
+      #toast {
+        position: fixed;
+        left: 50%;
+        bottom: 80px;
+        transform: translateX(-50%);
+        background: rgba(17, 24, 39, 0.9);
+        color: #ffffff;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 11px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 50;
+      }
+      #toast.show {
+        opacity: 1;
+      }
     </style>
   </head>
   <body>
@@ -313,7 +362,6 @@
       </div>
     </footer>
 
-    <!-- 네비 바텀시트 -->
     <div id="overlay"></div>
     <div id="sheet">
       <div id="sheetTitle" style="font-weight: 700; margin-bottom: 6px">
@@ -326,6 +374,8 @@
       <button onclick="closeSheet()">닫기</button>
     </div>
 
+    <div id="toast"></div>
+
     <script>
       const START_LAT = 37.158135;
       const START_LNG = 127.103159;
@@ -335,6 +385,10 @@
       let markers = new Map();
       let focusId = null;
       let navTarget = null;
+
+      const GEO_CACHE_KEY = "flex_geocode_cache_v1";
+      const GEO_CACHE_TTL = 3 * 24 * 60 * 60 * 1000; // 3일
+      let geoCache = {};
 
       const logEl = document.getElementById("log");
       const listEl = document.getElementById("list");
@@ -348,6 +402,10 @@
       const navKBtn = document.getElementById("navK");
       const navTBtn = document.getElementById("navT");
       const fileNameEl = document.getElementById("fileName");
+      const appEl = document.getElementById("app");
+      const listWrapEl = document.getElementById("listWrap");
+      const handleEl = document.getElementById("handle");
+      const toastEl = document.getElementById("toast");
 
       function setLog(msg) {
         if (logEl) logEl.textContent = msg || "";
@@ -366,9 +424,8 @@
         });
       }
 
-      // 메모 있는 집은 주황, 나머지는 파랑
       function markerIcon(h, index, active) {
-        const r = 20; // 모바일 터치 고려 조금 키움
+        const r = 20;
         const size = r * 2 + 8;
         const isMemo = !!h.memo;
 
@@ -395,6 +452,7 @@
 
       function render() {
         initMap();
+        setTimeout(resizeMapToWrap, 0);
         markers.forEach((m) => m.setMap(null));
         markers.clear();
 
@@ -461,6 +519,13 @@
           const orderEsc = orderVal.replace(/'/g, "\\'");
           const linkEsc = linkVal.replace(/'/g, "\\'");
 
+          const invoiceMain =
+            invoiceVal && invoiceVal.length > 4 ? invoiceVal.slice(0, -4) : "";
+          const invoiceLast4 = invoiceVal ? invoiceVal.slice(-4) : "";
+          const orderMain =
+            orderVal && orderVal.length > 4 ? orderVal.slice(0, -4) : "";
+          const orderLast4 = orderVal ? orderVal.slice(-4) : "";
+
           card.innerHTML = `
         <div class="rowTop">
           <div>
@@ -488,6 +553,30 @@
             onclick="event.stopPropagation(); toggleParts(this);">📦 상세</button>
         </div>
         <div class="parts hidden">
+          ${
+            invoiceVal || orderVal
+              ? `<div class="codes">
+              ${
+                invoiceVal
+                  ? `<div class="code-line" onclick="event.stopPropagation(); copySingle('invoice','${invoiceEsc}')">
+                      <span class="code-label">운송장번호</span>
+                      <span class="code-main">${invoiceMain}</span>
+                      <span class="code-last4">${invoiceLast4}</span>
+                    </div>`
+                  : ""
+              }
+              ${
+                orderVal
+                  ? `<div class="code-line" onclick="event.stopPropagation(); copySingle('order','${orderEsc}')">
+                      <span class="code-label">주문번호</span>
+                      <span class="code-main">${orderMain}</span>
+                      <span class="code-last4">${orderLast4}</span>
+                    </div>`
+                  : ""
+              }
+            </div>`
+              : ""
+          }
           <b>품목 상세</b>
           <ul>${h.rows.map((r) => `<li>${r}</li>`).join("")}</ul>
         </div>
@@ -546,13 +635,24 @@
         window.open(url, "_blank");
       }
 
+      let toastTimer = null;
+      function showToast(msg) {
+        if (!toastEl) return;
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toastEl.classList.remove("show");
+        }, 2000);
+      }
+
       function copyCodes(invoice, orderNo) {
         const text = `운송장번호  ${invoice}\n주문번호  ${orderNo}`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard
             .writeText(text)
-            .then(() => setLog("복사됨"))
-            .catch(() => setLog("복사 실패"));
+            .then(() => showToast("운송장/주문번호 복사됨"))
+            .catch(() => showToast("복사 실패"));
         } else {
           const ta = document.createElement("textarea");
           ta.value = text;
@@ -560,9 +660,39 @@
           ta.select();
           try {
             document.execCommand("copy");
-            setLog("복사됨");
+            showToast("운송장/주문번호 복사됨");
           } catch (e) {
-            setLog("복사 실패");
+            showToast("복사 실패");
+          }
+          document.body.removeChild(ta);
+        }
+      }
+
+      function copySingle(type, value) {
+        if (!value) return;
+        const text =
+          type === "invoice" ? `운송장번호  ${value}` : `주문번호  ${value}`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard
+            .writeText(text)
+            .then(() =>
+              showToast(
+                type === "invoice" ? "운송장번호 복사됨" : "주문번호 복사됨"
+              )
+            )
+            .catch(() => showToast("복사 실패"));
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand("copy");
+            showToast(
+              type === "invoice" ? "운송장번호 복사됨" : "주문번호 복사됨"
+            );
+          } catch (e) {
+            showToast("복사 실패");
           }
           document.body.removeChild(ta);
         }
@@ -625,10 +755,133 @@
       window.callPhone = callPhone;
       window.openProduct = openProduct;
       window.copyCodes = copyCodes;
+      window.copySingle = copySingle;
       window.toggleParts = toggleParts;
       window.openNavSheet = openNavSheet;
-      window.focusHome = focusHome;
 
+      /* 지오캐시 로드/저장 + 만료 정리 */
+      function loadGeoCache() {
+        try {
+          const raw = localStorage.getItem(GEO_CACHE_KEY);
+          geoCache = raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          geoCache = {};
+        }
+        const now = Date.now();
+        let changed = false;
+        for (const addr in geoCache) {
+          const item = geoCache[addr];
+          if (!item || !item.ts || now - item.ts > GEO_CACHE_TTL) {
+            delete geoCache[addr];
+            changed = true;
+          }
+        }
+        if (changed) saveGeoCache();
+      }
+
+      function saveGeoCache() {
+        try {
+          localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geoCache));
+        } catch (e) {
+          console.warn("geo cache save failed", e);
+        }
+      }
+
+      /* 리스트 높이 드래그: grid-template-rows 조절 */
+      let isDragging = false;
+      let dragStartY = 0;
+      let dragStartRatio = 48; // 리스트 비율 %
+
+      function startDrag(clientY) {
+        isDragging = true;
+        dragStartY = clientY;
+
+        const appRect = appEl.getBoundingClientRect();
+        const listRect = listWrapEl.getBoundingClientRect();
+        if (appRect.height > 0) {
+          dragStartRatio = (listRect.height / appRect.height) * 100;
+        } else {
+          dragStartRatio = 48;
+        }
+      }
+
+      function resizeMapToWrap() {
+        if (!map) return;
+        const wrap = document.getElementById("mapWrap");
+        if (!wrap) return;
+
+        const w = wrap.clientWidth;
+        const h = wrap.clientHeight;
+
+        // 핵심: 네이버 지도는 DOM 크기 변화를 자동 반영 안 함
+        map.setSize(new naver.maps.Size(w, h));
+
+        // 리렌더 트리거(안전장치)
+        naver.maps.Event.trigger(map, "resize");
+      }
+
+      function moveDrag(clientY) {
+        if (!isDragging) return;
+        const appRect = appEl.getBoundingClientRect();
+        if (appRect.height <= 0) return;
+
+        const deltaY = clientY - dragStartY;
+        const ratioDelta = (deltaY / appRect.height) * 100;
+        let newRatio = dragStartRatio + ratioDelta * -1; // 아래로 내리면 리스트 커짐
+
+        if (newRatio < 25) newRatio = 25;
+        if (newRatio > 80) newRatio = 80;
+
+        const mapRatio = 100 - newRatio;
+        appEl.style.gridTemplateRows = `${mapRatio}% ${newRatio}%`;
+        requestAnimationFrame(resizeMapToWrap);
+      }
+
+      function endDrag() {
+        isDragging = false;
+      }
+
+      function onMouseMove(e) {
+        moveDrag(e.clientY);
+      }
+      function onMouseUp() {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        endDrag();
+      }
+
+      handleEl.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        startDrag(e.clientY);
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+
+      handleEl.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!e.touches || !e.touches[0]) return;
+          startDrag(e.touches[0].clientY);
+        },
+        { passive: true }
+      );
+      handleEl.addEventListener(
+        "touchmove",
+        (e) => {
+          if (!e.touches || !e.touches[0]) return;
+          moveDrag(e.touches[0].clientY);
+        },
+        { passive: true }
+      );
+      handleEl.addEventListener(
+        "touchend",
+        () => {
+          endDrag();
+        },
+        { passive: true }
+      );
+
+      /* 엑셀 로딩 */
       document.getElementById("file").addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -637,34 +890,47 @@
 
         try {
           const rows = await readXlsxFile(file);
-          if (!rows || rows.length < 2) {
+          if (!rows || rows.length < 1) {
             setLog("데이터가 없습니다.");
             return;
           }
 
-          const dataRows = rows;
+          // 헤더 존재 여부 자동 판단 (주소 열 기준)
+          let dataRows = [];
+          if (rows.length === 1) {
+            dataRows = rows;
+          } else {
+            const addr0 = rows[0][13];
+            if (
+              addr0 &&
+              typeof addr0 === "string" &&
+              /[0-9]/.test(addr0) &&
+              (addr0.includes("동") ||
+                addr0.includes("로") ||
+                addr0.includes("길"))
+            ) {
+              dataRows = rows;
+            } else {
+              dataRows = rows.slice(1);
+            }
+          }
+
           const mapByAddr = new Map();
           let idSeq = 0;
 
           dataRows.forEach((r) => {
-            const addrRaw = r[13]; // 주소 원본 (14번째 열)
-            const addr =
-              addrRaw == null
-                ? ""
-                : String(addrRaw).replace(/\s+/g, " ").trim();
+            const addr = r[13]; // 주소 (14번째 열)
             if (!addr) return;
 
             const phone = r[11]; // 전화번호 (12번째 열)
             const orderNo = r[4]; // 주문번호 (5번째 열)
             const invoice = r[5]; // 운송장번호 (6번째 열)
             const skuName = r[9]; // SKU명 (10번째 열, 대표 상품명)
-            const cbm = parseFloat(r[10]) || 0; // CBM (11번째 열)
+            const cbm = parseFloat(r[10]) || 0; // 11번째 열
             const memo = r[18]; // 메모(19번째 열)
-            const itemId = r[6]; // 예: 7번째 열에 itemId가 있다고 가정
-            const productLink = itemId
-              ? "https://www.coupang.com/vp/products/8239520807?vendorItemId=" +
-                encodeURIComponent(String(itemId))
-              : "";
+            const productLink =
+              "https://www.coupang.com/np/search?q=" +
+              encodeURIComponent(skuName || "");
 
             if (!mapByAddr.has(addr)) {
               mapByAddr.set(addr, {
@@ -690,11 +956,27 @@
           homes = Array.from(mapByAddr.values());
 
           setLog("지오코딩 중...");
+          loadGeoCache();
+
           for (const h of homes) {
+            const key = (h.addr || "").trim();
+            if (!key) continue;
+
+            const cached = geoCache[key];
+            if (
+              cached &&
+              typeof cached.lat === "number" &&
+              typeof cached.lng === "number"
+            ) {
+              h.lat = cached.lat;
+              h.lng = cached.lng;
+              continue;
+            }
+
             try {
               const geoRes = await new Promise((resolve) => {
                 naver.maps.Service.geocode(
-                  { query: h.addr },
+                  { query: key },
                   (status, response) => {
                     if (status !== naver.maps.Service.Status.OK) {
                       resolve(null);
@@ -716,6 +998,11 @@
                 if (!isNaN(lat) && !isNaN(lng)) {
                   h.lat = lat;
                   h.lng = lng;
+                  geoCache[key] = {
+                    lat,
+                    lng,
+                    ts: Date.now(),
+                  };
                 }
               }
             } catch (err) {
@@ -723,6 +1010,7 @@
             }
           }
 
+          saveGeoCache();
           render();
           setLog("완료");
         } catch (err) {
